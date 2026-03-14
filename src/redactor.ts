@@ -125,8 +125,8 @@ export function redactBody(
     const redacted = redactObjectKeys(parsed);
     return JSON.stringify(redacted);
   } catch {
-    // Not valid JSON — return as-is
-    return body;
+    // Not valid JSON — still check for inline secrets
+    return redactInlineSecrets(body, opts);
   }
 }
 
@@ -155,6 +155,34 @@ export function redactInlineSecrets(
 }
 
 // ---------------------------------------------------------------------------
+// redactUrl
+// ---------------------------------------------------------------------------
+
+export function redactUrl(
+  url: string,
+  opts?: RedactOptions,
+): string {
+  if (opts?.enabled === false) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    let changed = false;
+    for (const [key] of parsed.searchParams) {
+      if (SENSITIVE_BODY_KEYS.has(key) || SENSITIVE_BODY_KEYS.has(key.toLowerCase())) {
+        parsed.searchParams.set(key, REDACTED);
+        changed = true;
+      }
+    }
+    const result = changed ? parsed.toString() : url;
+    return redactInlineSecrets(result, opts);
+  } catch {
+    return redactInlineSecrets(url, opts);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // redactNetworkEvent
 // ---------------------------------------------------------------------------
 
@@ -167,6 +195,8 @@ export function redactNetworkEvent(
   }
 
   const result: NetworkEvent = { ...event };
+
+  result.url = redactUrl(event.url, opts);
 
   if (event.headers) {
     result.headers = redactHeaders(event.headers, opts);
