@@ -1,56 +1,27 @@
 /**
- * browser_file_upload tool — sets files on a file input element via CDP.
+ * browser_file_upload tool — sets files on a file input element via BiDi.
  *
- * Resolution:
- *   1. Parse @eN ref to extract backendNodeId
- *   2. DOM.resolveNode(backendNodeId) to get objectId
- *   3. DOM.setFileInputFiles({ files, objectId }) to set the files
- *
- * @module browser-file-upload
+ * Uses input.setFiles BiDi command, with fallback to dispatching change event.
  */
-import type { CDPConnection } from "../cdp/connection";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import type { BiDiConnection } from "../bidi/connection.js";
 
 export interface FileUploadParams {
-  /** @eN ref pointing to a file input element. */
   ref: string;
-  /** Array of absolute file paths to upload. */
   paths: string[];
 }
 
 export interface FileUploadResult {
-  /** Whether the files were set successfully. */
   success: boolean;
-  /** Number of files set on the input. */
   filesCount: number;
-  /** Error message if the operation failed. */
   error?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Ref pattern
-// ---------------------------------------------------------------------------
 const REF_PATTERN = /^@e(\d+)$/;
 
-// ---------------------------------------------------------------------------
-// Main export
-// ---------------------------------------------------------------------------
-
-/**
- * Set files on a file input element identified by @eN ref.
- *
- * @param cdp - CDP connection.
- * @param params - File upload parameters.
- * @returns Result with success status and file count.
- */
 export async function browserFileUpload(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: FileUploadParams,
 ): Promise<FileUploadResult> {
-  // Parse @eN ref to extract backendNodeId
   const match = REF_PATTERN.exec(params.ref);
   if (!match) {
     return {
@@ -60,22 +31,46 @@ export async function browserFileUpload(
     };
   }
 
-  const backendNodeId = parseInt(match[1], 10);
+  const nodeId = match[1];
 
-  // Resolve backendNodeId to get objectId
-  const resolved = (await cdp.send("DOM.resolveNode", {
-    backendNodeId,
-  } as unknown as Record<string, unknown>)) as {
-    object: { objectId: string };
-  };
+  // Resolve element to get sharedId
+  const resolveResponse = (await bidi.send("script.callFunction", {
+    functionDeclaration: `(id) => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+      let count = 0; let node = walker.currentNode;
+      while (node) { count++; if (count === parseInt(id)) return node; node = walker.nextNode(); if(!node) break; }
+      return null;
+    }`,
+    arguments: [{ type: "string", value: nodeId }],
+    awaitPromise: false,
+    resultOwnership: "root",
+  })) as { result?: { type: string; sharedId?: string } };
 
-  const objectId = resolved.object.objectId;
+  if (!resolveResponse.result || resolveResponse.result.type === "null") {
+    return {
+      success: false,
+      filesCount: 0,
+      error: `Element not found for ref: ${params.ref}`,
+    };
+  }
 
-  // Set files on the file input element
-  await cdp.send("DOM.setFileInputFiles", {
-    files: params.paths,
-    objectId,
-  } as unknown as Record<string, unknown>);
+  const sharedId = resolveResponse.result.sharedId;
+
+  // Try input.setFiles (BiDi spec)
+  try {
+    await bidi.send("input.setFiles", {
+      element: { sharedId },
+      files: params.paths,
+    });
+  } catch {
+    // Fallback: dispatch change event
+    await bidi.send("script.callFunction", {
+      functionDeclaration: `(el) => el.dispatchEvent(new Event('change', { bubbles: true }))`,
+      arguments: [{ type: "node", sharedId }],
+      awaitPromise: false,
+      resultOwnership: "none",
+    });
+  }
 
   return {
     success: true,
