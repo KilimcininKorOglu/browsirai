@@ -35,7 +35,7 @@ import { browserNetworkRequests, setupNetworkCapture, resetNetworkBuffer } from 
 import { browserConsoleMessages, setupConsoleCapture, resetConsoleBuffer } from "./browser-console-messages.js";
 import { browserAnnotatedScreenshot } from "./browser-annotated-screenshot.js";
 import { browserInspectSource } from "./browser-inspect-source.js";
-import { browserRoute, browserAbort, browserUnroute } from "./browser-intercept.js";
+import { browserRoute, browserAbort, browserUnroute, resetInterceptState } from "./browser-intercept.js";
 import { browserFind } from "./browser-find.js";
 import { browserDiff } from "./browser-diff.js";
 import { browserSaveState, browserLoadState } from "./browser-session-state.js";
@@ -53,6 +53,7 @@ function attachLifecycleListeners(conn: BiDiConnection): void {
     bidiConnection = null;
     resetConsoleBuffer();
     resetNetworkBuffer();
+    resetInterceptState();
   };
   conn.on("reconnectionFailed", resetState);
   conn.on("browserCrashed", resetState);

@@ -53,7 +53,7 @@ export interface UnrouteResult {
 
 const activeRoutes: Map<string, RouteRule> = new Map();
 const activeAborts: Map<string, AbortRule> = new Map();
-let handlerAttached = false;
+let attachedConnection: BiDiConnection | null = null;
 
 function matchGlob(pattern: string, url: string): boolean {
   const regex = pattern
@@ -65,8 +65,8 @@ function matchGlob(pattern: string, url: string): boolean {
 }
 
 async function syncInterceptPatterns(bidi: BiDiConnection): Promise<void> {
-  // Attach handler once
-  if (!handlerAttached) {
+  if (bidi !== attachedConnection) {
+    attachedConnection = bidi;
     bidi.on("network.beforeRequestSent", async (params: unknown) => {
       const p = params as {
         request: { request: string; url: string };
@@ -106,7 +106,6 @@ async function syncInterceptPatterns(bidi: BiDiConnection): Promise<void> {
         // Request may have been cancelled — ignore
       }
     });
-    handlerAttached = true;
   }
 }
 
@@ -207,5 +206,5 @@ export async function browserUnroute(
 export function resetInterceptState(): void {
   activeRoutes.clear();
   activeAborts.clear();
-  handlerAttached = false;
+  attachedConnection = null;
 }
