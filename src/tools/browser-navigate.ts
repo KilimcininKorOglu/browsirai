@@ -27,19 +27,24 @@ export async function browserNavigate(
 ): Promise<NavigateResult> {
   const { url, timeout = 8 } = params;
   const timeoutMs = timeout * 1000;
+  const ac = new AbortController();
 
-  const result = await Promise.race([
-    performNavigation(bidi, url, params.waitUntil),
-    createTimeout(timeoutMs),
-  ]);
-
-  return result;
+  try {
+    const result = await Promise.race([
+      performNavigation(bidi, url, params.waitUntil, ac.signal),
+      createTimeout(timeoutMs, ac.signal),
+    ]);
+    return result;
+  } finally {
+    ac.abort();
+  }
 }
 
 async function performNavigation(
   bidi: BiDiConnection,
   url: string,
   waitUntil?: string,
+  signal?: AbortSignal,
 ): Promise<NavigateResult> {
   const wait = waitUntil === "domcontentloaded" ? "interactive" : "complete";
 
@@ -52,12 +57,10 @@ async function performNavigation(
   };
 
   if (!navResponse.navigation && !navResponse.url) {
-    // Same-document navigation (hash change / pushState)
     return getPageInfo(bidi);
   }
 
-  // Wait for load if BiDi didn't wait fully
-  await waitForLoadCompletion(bidi, waitUntil);
+  await waitForLoadCompletion(bidi, waitUntil, signal);
 
   return getPageInfo(bidi);
 }
@@ -65,6 +68,7 @@ async function performNavigation(
 function waitForLoadCompletion(
   bidi: BiDiConnection,
   waitUntil?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const eventName =
     waitUntil === "domcontentloaded"
@@ -74,16 +78,24 @@ function waitForLoadCompletion(
   return new Promise<void>((resolve) => {
     let settled = false;
 
-    const handler = () => {
+    const settle = () => {
       if (settled) return;
       settled = true;
       bidi.off(eventName, handler as (params: unknown) => void);
       resolve();
     };
+
+    const handler = () => { settle(); };
     bidi.on(eventName, handler as (params: unknown) => void);
+
+    if (signal) {
+      signal.addEventListener("abort", settle, { once: true });
+    }
 
     const poll = async () => {
       while (!settled) {
+        if (signal?.aborted) return;
+
         try {
           const response = (await bidi.send("script.evaluate", {
             expression: "document.readyState",
@@ -96,11 +108,7 @@ function waitForLoadCompletion(
           const isLoadingState =
             readyState === "loading" || readyState === "interactive";
           if (readyState === "complete" || !isLoadingState) {
-            if (!settled) {
-              settled = true;
-              bidi.off(eventName, handler as (params: unknown) => void);
-              resolve();
-            }
+            settle();
             return;
           }
         } catch {
@@ -137,11 +145,15 @@ async function getPageInfo(bidi: BiDiConnection): Promise<NavigateResult> {
   };
 }
 
-function createTimeout(ms: number): Promise<never> {
+function createTimeout(ms: number, signal?: AbortSignal): Promise<never> {
   return new Promise((_resolve, reject) => {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       reject(new Error(`Navigation timeout after ${ms}ms`));
     }, ms);
+
+    if (signal) {
+      signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+    }
   });
 }
 
