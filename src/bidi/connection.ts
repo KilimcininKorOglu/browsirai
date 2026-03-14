@@ -102,6 +102,7 @@ export class BiDiConnection {
   private closed = false;
   private reconnecting = false;
   private _connected = false;
+  private defaultContextId: string | null = null;
 
   private boundOnMessage: ((...args: unknown[]) => void) | null = null;
   private boundOnClose: ((...args: unknown[]) => void) | null = null;
@@ -118,6 +119,16 @@ export class BiDiConnection {
   /** Whether the underlying WebSocket is currently open. */
   get isConnected(): boolean {
     return this._connected;
+  }
+
+  /** Set the default browsing context for script commands. */
+  setDefaultContext(contextId: string): void {
+    this.defaultContextId = contextId;
+  }
+
+  /** Get the current default browsing context. */
+  getDefaultContext(): string | null {
+    return this.defaultContextId;
   }
 
   /**
@@ -184,7 +195,16 @@ export class BiDiConnection {
     const id = this.nextId++;
     const timeout = options?.timeout ?? TIMEOUT;
 
-    const message: Record<string, unknown> = { id, method, params: params ?? {} };
+    const effectiveParams = { ...(params ?? {}) };
+    if (
+      (method === "script.evaluate" || method === "script.callFunction") &&
+      !effectiveParams.target &&
+      this.defaultContextId
+    ) {
+      effectiveParams.target = { context: this.defaultContextId };
+    }
+
+    const message: Record<string, unknown> = { id, method, params: effectiveParams };
 
     this.ws.send(JSON.stringify(message));
 

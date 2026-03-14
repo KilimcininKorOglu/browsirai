@@ -85,6 +85,8 @@ async function getBiDi(): Promise<BiDiConnection> {
     setupConsoleCapture(bidiConnection as any);
     setupNetworkCapture(bidiConnection as any);
 
+    await initDefaultContext(bidiConnection);
+
     return bidiConnection;
   }
 
@@ -112,7 +114,19 @@ async function getBiDi(): Promise<BiDiConnection> {
   setupConsoleCapture(bidiConnection as any);
   setupNetworkCapture(bidiConnection as any);
 
+  await initDefaultContext(bidiConnection);
+
   return bidiConnection;
+}
+
+async function initDefaultContext(conn: BiDiConnection): Promise<void> {
+  try {
+    const tree = (await conn.send("browsingContext.getTree", {})) as {
+      contexts: Array<{ context: string; url: string }>;
+    };
+    const ctx = tree.contexts.find(c => !c.url.startsWith("about:")) ?? tree.contexts[0];
+    if (ctx) conn.setDefaultContext(ctx.context);
+  } catch { /* non-fatal */ }
 }
 
 // ---------------------------------------------------------------------------
