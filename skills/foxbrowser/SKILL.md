@@ -1,9 +1,9 @@
 ---
-name: browsirai
+name: foxbrowser
 description: Control your live Firefox browser session via MCP tools. Navigate, click, fill forms, take screenshots, read accessibility trees, inspect source code locations, intercept network requests, and automate browser interactions.
 ---
 
-# browsirai
+# foxbrowser
 
 MCP server that connects AI coding agents to a running Firefox browser via WebDriver BiDi. Interact with your live session -- logged-in state, cookies, and all open tabs.
 
