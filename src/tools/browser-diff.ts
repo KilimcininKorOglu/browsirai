@@ -117,18 +117,23 @@ export async function browserDiff(
     resultOwnership: "none",
   });
 
-  const result = (await bidi.send("script.evaluate", {
-    expression: buildComparisonExpression(threshold),
-    awaitPromise: true,
-    resultOwnership: "none",
-  })) as { result: { type: string; value: string } };
+  try {
+    const result = (await bidi.send("script.evaluate", {
+      expression: buildComparisonExpression(threshold),
+      awaitPromise: true,
+      resultOwnership: "none",
+    })) as { result: { type: string; value: string } };
 
-  // Clean up
-  await bidi.send("script.evaluate", {
-    expression: "delete window._diffBefore; delete window._diffAfter;",
-    awaitPromise: false,
-    resultOwnership: "none",
-  });
-
-  return JSON.parse(result.result?.value ?? "{}") as DiffResult;
+    return JSON.parse(result.result?.value ?? "{}") as DiffResult;
+  } finally {
+    try {
+      await bidi.send("script.evaluate", {
+        expression: "delete window._diffBefore; delete window._diffAfter;",
+        awaitPromise: false,
+        resultOwnership: "none",
+      });
+    } catch {
+      // Cleanup is best-effort
+    }
+  }
 }
