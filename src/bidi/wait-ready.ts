@@ -68,7 +68,7 @@ export async function waitForDocumentReady(
       const params: Record<string, unknown> = {
         expression: "document.readyState",
         awaitPromise: false,
-        target: context ? { context } : undefined,
+        ...(context ? { target: { context } } : {}),
       };
 
       const response = await bidi.send("script.evaluate", params);
