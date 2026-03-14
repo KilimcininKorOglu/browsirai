@@ -60,7 +60,7 @@ import { browserDiff } from "../src/tools/browser-diff";
  * Creates a mock CDP session that records all CDP method calls and lets
  * individual tests configure responses per-method.
  */
-function createMockCDP() {
+function createMockBiDi() {
   const calls: Array<{ method: string; params: unknown }> = [];
   const responses = new Map<string, unknown>();
   const eventHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -148,25 +148,22 @@ function createMockCDP() {
   return session;
 }
 
-type MockCDP = ReturnType<typeof createMockCDP>;
+type MockBiDi = ReturnType<typeof createMockBiDi>;
 
 // ===========================================================================
 // browser_navigate
 // ===========================================================================
 
 describe("browser_navigate", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should navigate to URL and return title + URL", async () => {
-    cdp._setResponse("Page.navigate", {
-      frameId: "frame-1",
-      loaderId: "loader-1",
-    });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("browsingContext.navigate", { navigation: "nav-1", url: "about:blank" });
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("document.title")) {
         return { result: { type: "string", value: "Example Domain" } };
@@ -183,18 +180,15 @@ describe("browser_navigate", () => {
 
     expect(result.url).toBe("https://example.com/");
     expect(result.title).toBe("Example Domain");
-    expect(cdp._getCalls("Page.navigate")).toHaveLength(1);
-    expect(cdp._getCalls("Page.navigate")[0].params).toEqual(
+    expect(cdp._getCalls("browsingContext.navigate")).toHaveLength(1);
+    expect(cdp._getCalls("browsingContext.navigate")[0].params).toEqual(
       expect.objectContaining({ url: "https://example.com" })
     );
   });
 
   it("should wait for load event after navigation", async () => {
-    cdp._setResponse("Page.navigate", {
-      frameId: "frame-1",
-      loaderId: "loader-1",
-    });
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("browsingContext.navigate", { navigation: "nav-1", url: "about:blank" });
+    cdp._setResponse("script.evaluate", {
       result: { type: "string", value: "Test" },
     });
 
@@ -205,14 +199,14 @@ describe("browser_navigate", () => {
 
     // Verify that the navigation waited for the load event
     // The implementation should listen for Page.loadEventFired or poll
-    const navCalls = cdp._getCalls("Page.navigate");
+    const navCalls = cdp._getCalls("browsingContext.navigate");
     expect(navCalls).toHaveLength(1);
   });
 
   it("should handle net::ERR_NAME_NOT_RESOLVED error", async () => {
-    cdp._setResponse("Page.navigate", {
+    cdp._setResponse("browsingContext.navigate", {
       frameId: "frame-1",
-      errorText: "net::ERR_NAME_NOT_RESOLVED",
+      error: "net::ERR_NAME_NOT_RESOLVED",
     });
 
     await expect(
@@ -223,7 +217,7 @@ describe("browser_navigate", () => {
   });
 
   it("should handle navigation timeout", async () => {
-    cdp._setResponse("Page.navigate", () => {
+    cdp._setResponse("browsingContext.navigate", () => {
       return new Promise(() => {
         // Never resolves — simulates timeout
       });
@@ -237,11 +231,8 @@ describe("browser_navigate", () => {
   });
 
   it("should handle redirect and return final URL", async () => {
-    cdp._setResponse("Page.navigate", {
-      frameId: "frame-1",
-      loaderId: "loader-1",
-    });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("browsingContext.navigate", { navigation: "nav-1", url: "about:blank" });
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("location.href")) {
         return {
@@ -263,11 +254,11 @@ describe("browser_navigate", () => {
 
   it("should handle same-document navigation (hash change, no loaderId)", async () => {
     // Same-document navigations (e.g., #section) return no loaderId
-    cdp._setResponse("Page.navigate", {
+    cdp._setResponse("browsingContext.navigate", {
       frameId: "frame-1",
       // No loaderId — indicates same-document navigation
     });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("document.title")) {
         return { result: { type: "string", value: "Page Title" } };
@@ -293,11 +284,8 @@ describe("browser_navigate", () => {
   });
 
   it("should pass waitUntil option to control load wait strategy", async () => {
-    cdp._setResponse("Page.navigate", {
-      frameId: "frame-1",
-      loaderId: "loader-1",
-    });
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("browsingContext.navigate", { navigation: "nav-1", url: "about:blank" });
+    cdp._setResponse("script.evaluate", {
       result: { type: "string", value: "Test" },
     });
 
@@ -306,7 +294,7 @@ describe("browser_navigate", () => {
       waitUntil: "domcontentloaded",
     });
 
-    const navCalls = cdp._getCalls("Page.navigate");
+    const navCalls = cdp._getCalls("browsingContext.navigate");
     expect(navCalls).toHaveLength(1);
   });
 });
@@ -316,14 +304,14 @@ describe("browser_navigate", () => {
 // ===========================================================================
 
 describe("browser_navigate_back", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should go back in navigation history", async () => {
-    cdp._setResponse("Page.getNavigationHistory", {
+    cdp._setResponse("script.evaluate", {
       currentIndex: 2,
       entries: [
         { id: 0, url: "https://example.com/page1", title: "Page 1" },
@@ -331,7 +319,7 @@ describe("browser_navigate_back", () => {
         { id: 2, url: "https://example.com/page3", title: "Page 3" },
       ],
     });
-    cdp._setResponse("Page.navigateToHistoryEntry", {});
+    cdp._setResponse("browsingContext.traverseHistory", {});
 
     const result = await browserNavigateBack(cdp as never, {
       direction: "back",
@@ -340,7 +328,7 @@ describe("browser_navigate_back", () => {
     expect(result.success).toBe(true);
     expect(result.url).toBe("https://example.com/page2");
 
-    const historyCalls = cdp._getCalls("Page.navigateToHistoryEntry");
+    const historyCalls = cdp._getCalls("browsingContext.traverseHistory");
     expect(historyCalls).toHaveLength(1);
     expect(historyCalls[0].params).toEqual(
       expect.objectContaining({ entryId: 1 })
@@ -348,15 +336,15 @@ describe("browser_navigate_back", () => {
   });
 
   it("should go forward in navigation history", async () => {
-    cdp._setResponse("Page.getNavigationHistory", {
+    cdp._setResponse("script.evaluate", {
       currentIndex: 0,
       entries: [
         { id: 0, url: "https://example.com/page1", title: "Page 1" },
         { id: 1, url: "https://example.com/page2", title: "Page 2" },
       ],
     });
-    cdp._setResponse("Page.navigateToHistoryEntry", {});
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("browsingContext.traverseHistory", {});
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("location.href")) {
         return {
@@ -375,7 +363,7 @@ describe("browser_navigate_back", () => {
 
     expect(result.url).toBe("https://example.com/page2");
 
-    const historyCalls = cdp._getCalls("Page.navigateToHistoryEntry");
+    const historyCalls = cdp._getCalls("browsingContext.traverseHistory");
     expect(historyCalls).toHaveLength(1);
     expect(historyCalls[0].params).toEqual(
       expect.objectContaining({ entryId: 1 })
@@ -383,7 +371,7 @@ describe("browser_navigate_back", () => {
   });
 
   it("should handle empty history (no page to go back to)", async () => {
-    cdp._setResponse("Page.getNavigationHistory", {
+    cdp._setResponse("script.evaluate", {
       currentIndex: 0,
       entries: [
         { id: 0, url: "https://example.com/only-page", title: "Only Page" },
@@ -396,7 +384,7 @@ describe("browser_navigate_back", () => {
   });
 
   it("should handle empty forward history", async () => {
-    cdp._setResponse("Page.getNavigationHistory", {
+    cdp._setResponse("script.evaluate", {
       currentIndex: 1,
       entries: [
         { id: 0, url: "https://example.com/page1", title: "Page 1" },
@@ -410,15 +398,15 @@ describe("browser_navigate_back", () => {
   });
 
   it("should default to going back when no direction is specified", async () => {
-    cdp._setResponse("Page.getNavigationHistory", {
+    cdp._setResponse("script.evaluate", {
       currentIndex: 1,
       entries: [
         { id: 0, url: "https://example.com/page1", title: "Page 1" },
         { id: 1, url: "https://example.com/page2", title: "Page 2" },
       ],
     });
-    cdp._setResponse("Page.navigateToHistoryEntry", {});
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("browsingContext.traverseHistory", {});
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("location.href")) {
         return {
@@ -431,7 +419,7 @@ describe("browser_navigate_back", () => {
     const result = await browserNavigateBack(cdp as never, {});
 
     expect(result.url).toBe("https://example.com/page1");
-    const historyCalls = cdp._getCalls("Page.navigateToHistoryEntry");
+    const historyCalls = cdp._getCalls("browsingContext.traverseHistory");
     expect(historyCalls[0].params).toEqual(
       expect.objectContaining({ entryId: 0 })
     );
@@ -443,12 +431,12 @@ describe("browser_navigate_back", () => {
 // ===========================================================================
 
 describe("browser_click", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     // Default box model response for element center calculation
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [100, 200, 200, 200, 200, 250, 100, 250],
         padding: [100, 200, 200, 200, 200, 250, 100, 250],
@@ -458,13 +446,13 @@ describe("browser_click", () => {
         height: 50,
       },
     });
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Input.dispatchMouseEvent", {});
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-1" },
     });
-    cdp._setResponse("DOM.querySelector", { nodeId: 42 });
-    cdp._setResponse("DOM.getDocument", {
+    cdp._setResponse("script.evaluate", { nodeId: 42 });
+    cdp._setResponse("script.evaluate", {
       root: { nodeId: 1 },
     });
   });
@@ -478,7 +466,7 @@ describe("browser_click", () => {
     expect(result.success).toBe(true);
 
     // Should dispatch mouseMoved, mousePressed, mouseReleased
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     expect(mouseEvents.length).toBeGreaterThanOrEqual(3);
 
     const types = mouseEvents.map(
@@ -490,7 +478,7 @@ describe("browser_click", () => {
   });
 
   it("should click by CSS selector", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: {
         type: "object",
         subtype: "node",
@@ -515,7 +503,7 @@ describe("browser_click", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const pressEvent = mouseEvents.find(
       (c) => (c.params as { type: string }).type === "mousePressed"
     );
@@ -533,7 +521,7 @@ describe("browser_click", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const pressEvents = mouseEvents.filter(
       (c) => (c.params as { type: string }).type === "mousePressed"
     );
@@ -553,7 +541,7 @@ describe("browser_click", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const pressEvent = mouseEvents.find(
       (c) => (c.params as { type: string }).type === "mousePressed"
     );
@@ -571,7 +559,7 @@ describe("browser_click", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const pressEvent = mouseEvents.find(
       (c) => (c.params as { type: string }).type === "mousePressed"
     );
@@ -582,8 +570,8 @@ describe("browser_click", () => {
   });
 
   it("should handle element not found", async () => {
-    cdp._setResponse("DOM.querySelector", { nodeId: 0 });
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", { nodeId: 0 });
+    cdp._setResponse("script.evaluate", {
       result: { type: "undefined", value: undefined },
     });
 
@@ -596,7 +584,7 @@ describe("browser_click", () => {
   });
 
   it("should handle element not visible/clickable (zero-size box model)", async () => {
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [0, 0, 0, 0, 0, 0, 0, 0],
         width: 0,
@@ -630,7 +618,7 @@ describe("browser_click", () => {
     });
 
     expect(result.success).toBe(true);
-    const scrollCalls = cdp._getCalls("DOM.scrollIntoViewIfNeeded");
+    const scrollCalls = cdp._getCalls("script.evaluate");
     expect(scrollCalls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -642,7 +630,7 @@ describe("browser_click", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const types = mouseEvents.map(
       (c) => (c.params as { type: string }).type
     );
@@ -675,7 +663,7 @@ describe("browser_click", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const pressEvent = mouseEvents.find(
       (c) => (c.params as { type: string }).type === "mousePressed"
     );
@@ -694,7 +682,7 @@ describe("browser_click", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const pressEvent = mouseEvents.find(
       (c) => (c.params as { type: string }).type === "mousePressed"
     );
@@ -709,25 +697,25 @@ describe("browser_click", () => {
 // ===========================================================================
 
 describe("browser_fill_form", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.focus", {});
-    cdp._setResponse("Input.insertText", {});
-    cdp._setResponse("Runtime.callFunctionOn", { result: { type: "undefined" } });
-    cdp._setResponse("DOM.resolveNode", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.callFunction", { result: { type: "undefined" } });
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-form-1" },
     });
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [10, 10, 110, 10, 110, 40, 10, 40],
         width: 100,
         height: 30,
       },
     });
-    cdp._setResponse("Input.dispatchMouseEvent", {});
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.evaluate", {});
   });
 
   it("should focus element, clear, type text, and dispatch events", async () => {
@@ -746,11 +734,11 @@ describe("browser_fill_form", () => {
     expect(result.filledCount).toBe(1);
 
     // Should have focused the element
-    const focusCalls = cdp._getCalls("DOM.focus");
+    const focusCalls = cdp._getCalls("script.evaluate");
     expect(focusCalls.length).toBeGreaterThanOrEqual(1);
 
     // Should have cleared and typed
-    const insertCalls = cdp._getCalls("Input.insertText");
+    const insertCalls = cdp._getCalls("input.performActions");
     expect(insertCalls.length).toBeGreaterThanOrEqual(1);
     expect(
       (insertCalls[insertCalls.length - 1].params as { text: string }).text
@@ -774,11 +762,11 @@ describe("browser_fill_form", () => {
   });
 
   it("should fill by CSS selector", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", subtype: "node", objectId: "obj-css-2" },
     });
-    cdp._setResponse("DOM.querySelector", { nodeId: 55 });
-    cdp._setResponse("DOM.getDocument", { root: { nodeId: 1 } });
+    cdp._setResponse("script.evaluate", { nodeId: 55 });
+    cdp._setResponse("script.evaluate", { root: { nodeId: 1 } });
 
     const result = await browserFillForm(cdp as never, {
       fields: [
@@ -797,7 +785,7 @@ describe("browser_fill_form", () => {
 
   it("should clear field before filling", async () => {
     const callOrder: string[] = [];
-    cdp._setResponse("Runtime.callFunctionOn", (params: unknown) => {
+    cdp._setResponse("script.callFunction", (params: unknown) => {
       const p = params as { functionDeclaration: string };
       if (p.functionDeclaration.includes("value = ''") ||
           p.functionDeclaration.includes('value = ""') ||
@@ -822,7 +810,7 @@ describe("browser_fill_form", () => {
     });
 
     // Clear should be called (via Runtime.callFunctionOn to set value = '')
-    const clearCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const clearCalls = cdp._getCalls("script.callFunction");
     expect(clearCalls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -840,7 +828,7 @@ describe("browser_fill_form", () => {
   });
 
   it("should handle readonly/disabled inputs", async () => {
-    cdp._setResponse("Runtime.callFunctionOn", (params: unknown) => {
+    cdp._setResponse("script.callFunction", (params: unknown) => {
       const p = params as { functionDeclaration: string };
       if (
         p.functionDeclaration.includes("readOnly") ||
@@ -870,7 +858,7 @@ describe("browser_fill_form", () => {
   });
 
   it("should handle checkbox fields", async () => {
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "boolean", value: false },
     });
 
@@ -905,12 +893,12 @@ describe("browser_fill_form", () => {
     expect(result.filledCount).toBe(1);
 
     // Radio buttons are selected by clicking
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     expect(mouseEvents.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should handle combobox (select dropdown) fields", async () => {
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "object", value: ["us"] },
     });
 
@@ -929,7 +917,7 @@ describe("browser_fill_form", () => {
     expect(result.filledCount).toBe(1);
 
     // Combobox should use the select_option approach
-    const callOnCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const callOnCalls = cdp._getCalls("script.callFunction");
     expect(callOnCalls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -949,7 +937,7 @@ describe("browser_fill_form", () => {
     expect(result.filledCount).toBe(1);
 
     // Slider should set value property and dispatch input + change events
-    const callOnCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const callOnCalls = cdp._getCalls("script.callFunction");
     expect(callOnCalls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -965,7 +953,7 @@ describe("browser_fill_form", () => {
       ],
     });
 
-    const callOnCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const callOnCalls = cdp._getCalls("script.callFunction");
     const dispatchCall = callOnCalls.find((c) => {
       const fd = (c.params as { functionDeclaration: string })
         .functionDeclaration;
@@ -981,14 +969,14 @@ describe("browser_fill_form", () => {
 // ===========================================================================
 
 describe("browser_type", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.focus", {});
-    cdp._setResponse("Input.insertText", {});
-    cdp._setResponse("Input.dispatchKeyEvent", {});
-    cdp._setResponse("DOM.resolveNode", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-type-1" },
     });
   });
@@ -1001,7 +989,7 @@ describe("browser_type", () => {
 
     expect(result.success).toBe(true);
 
-    const insertCalls = cdp._getCalls("Input.insertText");
+    const insertCalls = cdp._getCalls("input.performActions");
     expect(insertCalls).toHaveLength(1);
     expect(
       (insertCalls[0].params as { text: string }).text
@@ -1018,7 +1006,7 @@ describe("browser_type", () => {
     expect(result.success).toBe(true);
 
     // For "abc" typed slowly: 3 keyDown + 3 keyUp = 6 events minimum
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     expect(keyEvents.length).toBeGreaterThanOrEqual(6);
   });
 
@@ -1029,7 +1017,7 @@ describe("browser_type", () => {
 
     expect(result.success).toBe(true);
 
-    const insertCalls = cdp._getCalls("Input.insertText");
+    const insertCalls = cdp._getCalls("input.performActions");
     expect(insertCalls).toHaveLength(1);
     expect(
       (insertCalls[0].params as { text: string }).text
@@ -1045,7 +1033,7 @@ describe("browser_type", () => {
 
     expect(result.success).toBe(true);
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     const enterKey = keyEvents.find(
       (c) =>
         (c.params as { key: string }).key === "Enter" &&
@@ -1056,7 +1044,7 @@ describe("browser_type", () => {
 
   it("should handle cross-origin iframes via Input.insertText", async () => {
     // Input.insertText works even when Runtime.evaluate is blocked by CORS
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       throw new Error("Cannot access cross-origin frame");
     });
 
@@ -1065,7 +1053,7 @@ describe("browser_type", () => {
     });
 
     expect(result.success).toBe(true);
-    const insertCalls = cdp._getCalls("Input.insertText");
+    const insertCalls = cdp._getCalls("input.performActions");
     expect(insertCalls).toHaveLength(1);
   });
 
@@ -1075,7 +1063,7 @@ describe("browser_type", () => {
       text: "focused typing",
     });
 
-    const focusCalls = cdp._getCalls("DOM.focus");
+    const focusCalls = cdp._getCalls("script.evaluate");
     expect(focusCalls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -1086,7 +1074,7 @@ describe("browser_type", () => {
       slowly: true,
     });
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     const keyDownEvents = keyEvents.filter(
       (c) => (c.params as { type: string }).type === "keyDown"
     );
@@ -1107,11 +1095,11 @@ describe("browser_type", () => {
 // ===========================================================================
 
 describe("browser_press_key", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Input.dispatchKeyEvent", {});
+    cdp = createMockBiDi();
+    cdp._setResponse("input.performActions", {});
   });
 
   it("should press single key (Enter)", async () => {
@@ -1119,7 +1107,7 @@ describe("browser_press_key", () => {
 
     expect(result.success).toBe(true);
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     expect(keyEvents.length).toBeGreaterThanOrEqual(2); // keyDown + keyUp
 
     const keyDown = keyEvents.find(
@@ -1139,7 +1127,7 @@ describe("browser_press_key", () => {
     expect(result.success).toBe(true);
 
     const keyDown = cdp
-      ._getCalls("Input.dispatchKeyEvent")
+      ._getCalls("input.performActions")
       .find((c) => (c.params as { type: string }).type === "keyDown");
     expect((keyDown!.params as { key: string }).key).toBe("Tab");
   });
@@ -1149,7 +1137,7 @@ describe("browser_press_key", () => {
     expect(result.success).toBe(true);
 
     const keyDown = cdp
-      ._getCalls("Input.dispatchKeyEvent")
+      ._getCalls("input.performActions")
       .find((c) => (c.params as { type: string }).type === "keyDown");
     expect((keyDown!.params as { key: string }).key).toBe("Escape");
   });
@@ -1159,7 +1147,7 @@ describe("browser_press_key", () => {
     expect(result.success).toBe(true);
 
     const keyDown = cdp
-      ._getCalls("Input.dispatchKeyEvent")
+      ._getCalls("input.performActions")
       .find((c) => (c.params as { type: string }).type === "keyDown");
     expect((keyDown!.params as { key: string }).key).toBe("Backspace");
   });
@@ -1169,7 +1157,7 @@ describe("browser_press_key", () => {
 
     expect(result.success).toBe(true);
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     // Should have Ctrl keyDown, 'a' keyDown, 'a' keyUp, Ctrl keyUp (or similar)
     const ctrlDown = keyEvents.find(
       (c) =>
@@ -1204,7 +1192,7 @@ describe("browser_press_key", () => {
 
     expect(result.success).toBe(true);
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     const metaDown = keyEvents.find(
       (c) =>
         (c.params as { type: string }).type === "keyDown" &&
@@ -1216,7 +1204,7 @@ describe("browser_press_key", () => {
   it("should dispatch keyDown and keyUp events", async () => {
     await browserPressKey(cdp as never, { key: "Enter" });
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     const types = keyEvents.map(
       (c) => (c.params as { type: string }).type
     );
@@ -1228,7 +1216,7 @@ describe("browser_press_key", () => {
     await browserPressKey(cdp as never, { key: "ArrowLeft" });
 
     const keyDown = cdp
-      ._getCalls("Input.dispatchKeyEvent")
+      ._getCalls("input.performActions")
       .find((c) => (c.params as { type: string }).type === "keyDown");
 
     expect((keyDown!.params as { key: string }).key).toBe("ArrowLeft");
@@ -1243,7 +1231,7 @@ describe("browser_press_key", () => {
     await browserPressKey(cdp as never, { key: "Tab" });
 
     const keyDown = cdp
-      ._getCalls("Input.dispatchKeyEvent")
+      ._getCalls("input.performActions")
       .find((c) => (c.params as { type: string }).type === "keyDown");
 
     expect(
@@ -1255,7 +1243,7 @@ describe("browser_press_key", () => {
   it("should press arrow keys (ArrowDown, ArrowUp, ArrowRight)", async () => {
     for (const key of ["ArrowDown", "ArrowUp", "ArrowRight"]) {
       cdp._reset();
-      cdp._setResponse("Input.dispatchKeyEvent", {});
+      cdp._setResponse("input.performActions", {});
 
       const result = await browserPressKey(cdp as never, { key });
       expect(result.success).toBe(true);
@@ -1266,7 +1254,7 @@ describe("browser_press_key", () => {
     const result = await browserPressKey(cdp as never, { key: "Shift+Tab" });
     expect(result.success).toBe(true);
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     const tabDown = keyEvents.find(
       (c) =>
         (c.params as { type: string }).type === "keyDown" &&
@@ -1285,12 +1273,12 @@ describe("browser_press_key", () => {
 // ===========================================================================
 
 describe("browser_scroll", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Input.dispatchMouseEvent", {});
-    cdp._setResponse("Runtime.evaluate", {
+    cdp = createMockBiDi();
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: true },
     });
   });
@@ -1306,8 +1294,8 @@ describe("browser_scroll", () => {
     // Scroll is typically done via Input.dispatchMouseEvent with mouseWheel
     // or Runtime.evaluate with window.scrollBy
     const scrollCalls = [
-      ...cdp._getCalls("Input.dispatchMouseEvent"),
-      ...cdp._getCalls("Runtime.evaluate"),
+      ...cdp._getCalls("input.performActions"),
+      ...cdp._getCalls("script.evaluate"),
     ];
     expect(scrollCalls.length).toBeGreaterThanOrEqual(1);
   });
@@ -1322,13 +1310,13 @@ describe("browser_scroll", () => {
   });
 
   it("should scroll to element (scrollIntoView)", async () => {
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-scroll-1" },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "undefined" },
     });
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
+    cdp._setResponse("script.evaluate", {});
 
     const result = await browserScroll(cdp as never, {
       selector: "#target-section",
@@ -1337,24 +1325,24 @@ describe("browser_scroll", () => {
     expect(result.success).toBe(true);
 
     // Should call scrollIntoView on the element
-    const callOnCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const callOnCalls = cdp._getCalls("script.callFunction");
     const scrollIntoViewCall = callOnCalls.find((c) =>
       (c.params as { functionDeclaration: string }).functionDeclaration.includes(
         "scrollIntoView"
       )
     );
     // Or it may use DOM.scrollIntoViewIfNeeded
-    const scrollIfNeeded = cdp._getCalls("DOM.scrollIntoViewIfNeeded");
+    const scrollIfNeeded = cdp._getCalls("script.evaluate");
     expect(
       scrollIntoViewCall !== undefined || scrollIfNeeded.length > 0
     ).toBe(true);
   });
 
   it("should scroll within scrollable container by selector", async () => {
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-container-1" },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "undefined" },
     });
 
@@ -1392,13 +1380,13 @@ describe("browser_scroll", () => {
   });
 
   it("should handle scroll on element that does not exist", async () => {
-    cdp._setResponse("DOM.resolveNode", () => {
+    cdp._setResponse("script.evaluate", () => {
       throw new Error("Could not find node with given id");
     });
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", value: null, subtype: "null" },
     });
-    cdp._setResponse("DOM.querySelector", { nodeId: 0 });
+    cdp._setResponse("script.evaluate", { nodeId: 0 });
 
     await expect(
       browserScroll(cdp as never, {
@@ -1413,20 +1401,20 @@ describe("browser_scroll", () => {
 // ===========================================================================
 
 describe("browser_hover", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [50, 100, 150, 100, 150, 130, 50, 130],
         width: 100,
         height: 30,
       },
     });
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Input.dispatchMouseEvent", {});
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-hover-1" },
     });
   });
@@ -1439,7 +1427,7 @@ describe("browser_hover", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const moveEvent = mouseEvents.find(
       (c) => (c.params as { type: string }).type === "mouseMoved"
     );
@@ -1450,8 +1438,8 @@ describe("browser_hover", () => {
   });
 
   it("should hover by CSS selector", async () => {
-    cdp._setResponse("DOM.querySelector", { nodeId: 88 });
-    cdp._setResponse("DOM.getDocument", { root: { nodeId: 1 } });
+    cdp._setResponse("script.evaluate", { nodeId: 88 });
+    cdp._setResponse("script.evaluate", { root: { nodeId: 1 } });
 
     const result = await browserHover(cdp as never, {
       selector: ".dropdown-trigger",
@@ -1460,7 +1448,7 @@ describe("browser_hover", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     expect(
       mouseEvents.some(
         (c) => (c.params as { type: string }).type === "mouseMoved"
@@ -1478,7 +1466,7 @@ describe("browser_hover", () => {
 
     // The CDP mouseMoved event triggers mouseover/mouseenter in the browser
     const moveEvents = cdp
-      ._getCalls("Input.dispatchMouseEvent")
+      ._getCalls("input.performActions")
       .filter(
         (c) => (c.params as { type: string }).type === "mouseMoved"
       );
@@ -1491,12 +1479,12 @@ describe("browser_hover", () => {
       element: "Off-screen element",
     });
 
-    const scrollCalls = cdp._getCalls("DOM.scrollIntoViewIfNeeded");
+    const scrollCalls = cdp._getCalls("script.evaluate");
     expect(scrollCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should handle element not found for hover", async () => {
-    cdp._setResponse("DOM.getBoxModel", () => {
+    cdp._setResponse("script.evaluate", () => {
       throw new Error("Could not find node with given id");
     });
 
@@ -1509,7 +1497,7 @@ describe("browser_hover", () => {
   });
 
   it("should hover at the center of the element's content box", async () => {
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [0, 0, 200, 0, 200, 100, 0, 100],
         width: 200,
@@ -1523,7 +1511,7 @@ describe("browser_hover", () => {
     });
 
     const moveEvent = cdp
-      ._getCalls("Input.dispatchMouseEvent")
+      ._getCalls("input.performActions")
       .find((c) => (c.params as { type: string }).type === "mouseMoved");
 
     // Center: x = (0+200)/2 = 100, y = (0+100)/2 = 50
@@ -1537,11 +1525,11 @@ describe("browser_hover", () => {
 // ===========================================================================
 
 describe("browser_drag", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.getBoxModel", (params: unknown) => {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { nodeId?: number; backendNodeId?: number };
       // Return different coordinates for source vs target
       if (p.nodeId === 10 || p.backendNodeId === 10) {
@@ -1561,9 +1549,9 @@ describe("browser_drag", () => {
         },
       };
     });
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Input.dispatchMouseEvent", {});
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-drag-1" },
     });
   });
@@ -1578,7 +1566,7 @@ describe("browser_drag", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const types = mouseEvents.map(
       (c) => (c.params as { type: string }).type
     );
@@ -1621,7 +1609,7 @@ describe("browser_drag", () => {
 
     expect(result.success).toBe(true);
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
 
     const pressEvent = mouseEvents.find(
       (c) => (c.params as { type: string }).type === "mousePressed"
@@ -1645,7 +1633,7 @@ describe("browser_drag", () => {
     });
 
     const moveEvents = cdp
-      ._getCalls("Input.dispatchMouseEvent")
+      ._getCalls("input.performActions")
       .filter(
         (c) => (c.params as { type: string }).type === "mouseMoved"
       );
@@ -1662,7 +1650,7 @@ describe("browser_drag", () => {
       endElement: "Target",
     });
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const types = mouseEvents.map(
       (c) => (c.params as { type: string }).type
     );
@@ -1681,7 +1669,7 @@ describe("browser_drag", () => {
   });
 
   it("should handle drag when source element is not found", async () => {
-    cdp._setResponse("DOM.getBoxModel", () => {
+    cdp._setResponse("script.evaluate", () => {
       throw new Error("Could not find node with given id");
     });
 
@@ -1701,14 +1689,14 @@ describe("browser_drag", () => {
 // ===========================================================================
 
 describe("browser_select_option", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.resolveNode", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-select-1" },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "object", value: ["option-1"] },
     });
   });
@@ -1722,7 +1710,7 @@ describe("browser_select_option", () => {
 
     expect(result.success).toBe(true);
 
-    const callOnCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const callOnCalls = cdp._getCalls("script.callFunction");
     expect(callOnCalls.length).toBeGreaterThanOrEqual(1);
 
     // The function should set selected options and dispatch change event
@@ -1746,7 +1734,7 @@ describe("browser_select_option", () => {
   });
 
   it("should handle multi-select", async () => {
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: {
         type: "object",
         value: ["opt-a", "opt-c"],
@@ -1772,7 +1760,7 @@ describe("browser_select_option", () => {
       element: "Dropdown",
     });
 
-    const callOnCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const callOnCalls = cdp._getCalls("script.callFunction");
     const dispatchCall = callOnCalls.find((c) => {
       const fd = (c.params as { functionDeclaration: string })
         .functionDeclaration;
@@ -1785,7 +1773,7 @@ describe("browser_select_option", () => {
   });
 
   it("should handle element not being a <select>", async () => {
-    cdp._setResponse("Runtime.callFunctionOn", () => {
+    cdp._setResponse("script.callFunction", () => {
       throw new Error("Element is not a SELECT");
     });
 
@@ -1799,7 +1787,7 @@ describe("browser_select_option", () => {
   });
 
   it("should select single option and return it in selected array", async () => {
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "object", value: ["us"] },
     });
 
@@ -1814,7 +1802,7 @@ describe("browser_select_option", () => {
   });
 
   it("should pass the objectId from DOM.resolveNode to Runtime.callFunctionOn", async () => {
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "specific-obj-id-42" },
     });
 
@@ -1824,7 +1812,7 @@ describe("browser_select_option", () => {
       element: "Test select",
     });
 
-    const callOnCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const callOnCalls = cdp._getCalls("script.callFunction");
     expect(callOnCalls.length).toBeGreaterThanOrEqual(1);
     expect(
       (callOnCalls[0].params as { objectId: string }).objectId
@@ -1837,12 +1825,12 @@ describe("browser_select_option", () => {
 // ===========================================================================
 
 describe("browser_file_upload", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.setFileInputFiles", {});
-    cdp._setResponse("DOM.resolveNode", {
+    cdp = createMockBiDi();
+    cdp._setResponse("input.setFiles", {});
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-upload-1" },
     });
   });
@@ -1856,7 +1844,7 @@ describe("browser_file_upload", () => {
     expect(result.success).toBe(true);
     expect(result.filesCount).toBe(1);
 
-    const setFileCalls = cdp._getCalls("DOM.setFileInputFiles");
+    const setFileCalls = cdp._getCalls("input.setFiles");
     expect(setFileCalls).toHaveLength(1);
     expect(
       (setFileCalls[0].params as { files: string[] }).files
@@ -1872,14 +1860,14 @@ describe("browser_file_upload", () => {
     expect(result.success).toBe(true);
     expect(result.filesCount).toBe(3);
 
-    const setFileCalls = cdp._getCalls("DOM.setFileInputFiles");
+    const setFileCalls = cdp._getCalls("input.setFiles");
     expect(
       (setFileCalls[0].params as { files: string[] }).files
     ).toHaveLength(3);
   });
 
   it("should handle file not found", async () => {
-    cdp._setResponse("DOM.setFileInputFiles", () => {
+    cdp._setResponse("input.setFiles", () => {
       throw new Error("File not found: /tmp/nonexistent.jpg");
     });
 
@@ -1909,7 +1897,7 @@ describe("browser_file_upload", () => {
     });
 
     // Verify the upload call was made
-    expect(cdp._getCalls("DOM.setFileInputFiles")).toHaveLength(1);
+    expect(cdp._getCalls("input.setFiles")).toHaveLength(1);
   });
 
   it("should resolve backendNodeId from ref and pass objectId to setFileInputFiles", async () => {
@@ -1921,13 +1909,13 @@ describe("browser_file_upload", () => {
     expect(result.success).toBe(true);
 
     // Should have resolved the backendNodeId from the ref
-    const resolveCalls = cdp._getCalls("DOM.resolveNode");
+    const resolveCalls = cdp._getCalls("script.evaluate");
     expect(resolveCalls).toHaveLength(1);
     expect(
       (resolveCalls[0].params as { backendNodeId: number }).backendNodeId
     ).toBe(42);
 
-    const setFileCalls = cdp._getCalls("DOM.setFileInputFiles");
+    const setFileCalls = cdp._getCalls("input.setFiles");
     expect(setFileCalls).toHaveLength(1);
     // Should pass objectId from DOM.resolveNode
     expect(
@@ -1952,11 +1940,11 @@ describe("browser_file_upload", () => {
 // ===========================================================================
 
 describe("browser_handle_dialog", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Page.handleJavaScriptDialog", {});
+    cdp = createMockBiDi();
+    cdp._setResponse("browsingContext.handleUserPrompt", {});
   });
 
   it("should accept alert dialog", async () => {
@@ -1966,7 +1954,7 @@ describe("browser_handle_dialog", () => {
 
     expect(result.success).toBe(true);
 
-    const dialogCalls = cdp._getCalls("Page.handleJavaScriptDialog");
+    const dialogCalls = cdp._getCalls("browsingContext.handleUserPrompt");
     expect(dialogCalls).toHaveLength(1);
     expect(
       (dialogCalls[0].params as { accept: boolean }).accept
@@ -1980,7 +1968,7 @@ describe("browser_handle_dialog", () => {
 
     expect(result.success).toBe(true);
 
-    const dialogCalls = cdp._getCalls("Page.handleJavaScriptDialog");
+    const dialogCalls = cdp._getCalls("browsingContext.handleUserPrompt");
     expect(
       (dialogCalls[0].params as { accept: boolean }).accept
     ).toBe(false);
@@ -1994,7 +1982,7 @@ describe("browser_handle_dialog", () => {
 
     expect(result.success).toBe(true);
 
-    const dialogCalls = cdp._getCalls("Page.handleJavaScriptDialog");
+    const dialogCalls = cdp._getCalls("browsingContext.handleUserPrompt");
     expect(dialogCalls).toHaveLength(1);
     expect(
       (dialogCalls[0].params as { promptText?: string }).promptText
@@ -2008,7 +1996,7 @@ describe("browser_handle_dialog", () => {
 
     expect(result.success).toBe(true);
 
-    const dialogCalls = cdp._getCalls("Page.handleJavaScriptDialog");
+    const dialogCalls = cdp._getCalls("browsingContext.handleUserPrompt");
     expect(
       (dialogCalls[0].params as { accept: boolean }).accept
     ).toBe(false);
@@ -2016,7 +2004,7 @@ describe("browser_handle_dialog", () => {
 
   it("should handle no pending dialog gracefully", async () => {
     // CDP throws when no dialog is pending
-    cdp._setResponse("Page.handleJavaScriptDialog", () => {
+    cdp._setResponse("browsingContext.handleUserPrompt", () => {
       throw new Error("No dialog is showing");
     });
 
@@ -2038,12 +2026,12 @@ describe("browser_handle_dialog", () => {
     // Verify that calling handleDialog works for each accept value.
     for (const accept of [true, false]) {
       cdp._reset();
-      cdp._setResponse("Page.handleJavaScriptDialog", {});
+      cdp._setResponse("browsingContext.handleUserPrompt", {});
 
       const result = await browserHandleDialog(cdp as never, { accept });
       expect(result.success).toBe(true);
 
-      const dialogCalls = cdp._getCalls("Page.handleJavaScriptDialog");
+      const dialogCalls = cdp._getCalls("browsingContext.handleUserPrompt");
       expect(dialogCalls).toHaveLength(1);
       expect((dialogCalls[0].params as { accept: boolean }).accept).toBe(accept);
     }
@@ -2052,7 +2040,7 @@ describe("browser_handle_dialog", () => {
   it("should pass accept=true to CDP for accepted dialogs", async () => {
     await browserHandleDialog(cdp as never, { accept: true });
 
-    const calls = cdp._getCalls("Page.handleJavaScriptDialog");
+    const calls = cdp._getCalls("browsingContext.handleUserPrompt");
     expect(calls).toHaveLength(1);
     expect((calls[0].params as { accept: boolean }).accept).toBe(true);
   });
@@ -2063,15 +2051,15 @@ describe("browser_handle_dialog", () => {
 // ===========================================================================
 
 describe("browser_wait_for", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should wait for text to appear on page", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       // Text appears on 3rd poll
       if (callCount >= 3) {
@@ -2091,7 +2079,7 @@ describe("browser_wait_for", () => {
 
   it("should wait for text to disappear", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       // Text disappears on 2nd poll
       if (callCount >= 2) {
@@ -2121,7 +2109,7 @@ describe("browser_wait_for", () => {
   });
 
   it("should respect custom timeout", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: false },
     });
 
@@ -2134,7 +2122,7 @@ describe("browser_wait_for", () => {
   });
 
   it("should produce clear error message on timeout", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: false },
     });
 
@@ -2155,7 +2143,7 @@ describe("browser_wait_for", () => {
 
   it("should wait for selector to appear in DOM", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount >= 2) {
         return { result: { type: "object", value: {} } };
@@ -2173,7 +2161,7 @@ describe("browser_wait_for", () => {
 
   it("should wait for selector to be visible", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount >= 2) {
         return { result: { type: "boolean", value: true } };
@@ -2191,7 +2179,7 @@ describe("browser_wait_for", () => {
   });
 
   it("should wait for network idle", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: true },
     });
 
@@ -2204,7 +2192,7 @@ describe("browser_wait_for", () => {
   });
 
   it("should wait for page load", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "string", value: "complete" },
     });
 
@@ -2220,7 +2208,7 @@ describe("browser_wait_for", () => {
     // In cross-origin iframes, Runtime.evaluate may fail
     // The implementation should handle this gracefully
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount === 1) {
         // First attempt might target cross-origin frame
@@ -2240,7 +2228,7 @@ describe("browser_wait_for", () => {
 
   it("should use 30-second default timeout when not specified", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       // Resolve immediately on first call to avoid actually waiting 30s
       return { result: { type: "boolean", value: true } };
@@ -2254,7 +2242,7 @@ describe("browser_wait_for", () => {
   });
 
   it("should return elapsed time in milliseconds", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: true },
     });
 
@@ -2270,7 +2258,7 @@ describe("browser_wait_for", () => {
 
   it("should poll at regular intervals for text appearance", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount >= 4) {
         return { result: { type: "boolean", value: true } };
@@ -2284,7 +2272,7 @@ describe("browser_wait_for", () => {
     });
 
     // Should have polled multiple times
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
     expect(evalCalls.length).toBeGreaterThanOrEqual(4);
   });
 });
@@ -2294,22 +2282,22 @@ describe("browser_wait_for", () => {
 // ===========================================================================
 
 describe("browser_close", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Target.closeTarget", { success: true });
-    cdp._setResponse("Target.getTargets", {
-      targetInfos: [
+    cdp = createMockBiDi();
+    cdp._setResponse("browsingContext.close", { success: true });
+    cdp._setResponse("browsingContext.getTree", {
+      contexts: [
         {
-          targetId: "target-1",
+          context: "target-1",
           type: "page",
           title: "Tab 1",
           url: "https://example.com",
           attached: true,
         },
         {
-          targetId: "target-2",
+          context: "target-2",
           type: "page",
           title: "Tab 2",
           url: "https://example.org",
@@ -2324,26 +2312,26 @@ describe("browser_close", () => {
     expect(result.success).toBe(true);
     expect(result.closedTargets).toBe(1);
 
-    const closeCalls = cdp._getCalls("Target.closeTarget");
+    const closeCalls = cdp._getCalls("browsingContext.close");
     expect(closeCalls).toHaveLength(1);
     // Should close the attached (active) target
     expect(
-      (closeCalls[0].params as { targetId: string }).targetId
+      (closeCalls[0].params as { context: string }).targetId
     ).toBe("target-1");
   });
 
   it("should close specific tab by target ID", async () => {
     const result = await browserClose(cdp as never, {
-      targetId: "target-1",
+      context: "target-1",
     });
 
     expect(result.success).toBe(true);
     expect(result.closedTargets).toBe(1);
 
-    const closeCalls = cdp._getCalls("Target.closeTarget");
+    const closeCalls = cdp._getCalls("browsingContext.close");
     expect(closeCalls).toHaveLength(1);
     expect(
-      (closeCalls[0].params as { targetId: string }).targetId
+      (closeCalls[0].params as { context: string }).targetId
     ).toBe("target-1");
   });
 
@@ -2355,13 +2343,13 @@ describe("browser_close", () => {
     expect(result.success).toBe(true);
     expect(result.closedTargets).toBe(2);
 
-    const closeCalls = cdp._getCalls("Target.closeTarget");
+    const closeCalls = cdp._getCalls("browsingContext.close");
     expect(closeCalls).toHaveLength(2); // Two tabs
   });
 
   it("should handle already-closed tab in closeAll gracefully", async () => {
     // When closeAll is used, individual target close errors are ignored
-    cdp._setResponse("Target.closeTarget", () => {
+    cdp._setResponse("browsingContext.close", () => {
       throw new Error("No target with given id found");
     });
 
@@ -2380,7 +2368,7 @@ describe("browser_close", () => {
     expect(result.closedTargets).toBe(1);
 
     // Should have closed the active target
-    const closeCalls = cdp._getCalls("Target.closeTarget");
+    const closeCalls = cdp._getCalls("browsingContext.close");
     expect(closeCalls.length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -2390,11 +2378,11 @@ describe("browser_close", () => {
 // ===========================================================================
 
 describe("browser_resize", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Emulation.setDeviceMetricsOverride", {});
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {});
   });
 
   it("should set viewport size via Emulation.setDeviceMetricsOverride", async () => {
@@ -2408,7 +2396,7 @@ describe("browser_resize", () => {
     expect(result.height).toBe(720);
 
     const emulationCalls = cdp._getCalls(
-      "Emulation.setDeviceMetricsOverride"
+      "script.evaluate"
     );
     expect(emulationCalls).toHaveLength(1);
     expect(emulationCalls[0].params).toEqual(
@@ -2430,7 +2418,7 @@ describe("browser_resize", () => {
     expect(result.success).toBe(true);
 
     const emulationCalls = cdp._getCalls(
-      "Emulation.setDeviceMetricsOverride"
+      "script.evaluate"
     );
     expect(emulationCalls[0].params).toEqual(
       expect.objectContaining({
@@ -2474,7 +2462,7 @@ describe("browser_resize", () => {
     expect(result.success).toBe(true);
 
     const emulationCalls = cdp._getCalls(
-      "Emulation.setDeviceMetricsOverride"
+      "script.evaluate"
     );
     expect(emulationCalls[0].params).toEqual(
       expect.objectContaining({
@@ -2490,7 +2478,7 @@ describe("browser_resize", () => {
     });
 
     const emulationCalls = cdp._getCalls(
-      "Emulation.setDeviceMetricsOverride"
+      "script.evaluate"
     );
     const params = emulationCalls[0].params as {
       deviceScaleFactor: number;
@@ -2499,7 +2487,7 @@ describe("browser_resize", () => {
   });
 
   it("should handle Emulation.setDeviceMetricsOverride failure", async () => {
-    cdp._setResponse("Emulation.setDeviceMetricsOverride", () => {
+    cdp._setResponse("script.evaluate", () => {
       throw new Error("Emulation domain is not enabled");
     });
 
@@ -2515,7 +2503,7 @@ describe("browser_resize", () => {
     });
 
     const emulationCalls = cdp._getCalls(
-      "Emulation.setDeviceMetricsOverride"
+      "script.evaluate"
     );
     const params = emulationCalls[0].params as { mobile: boolean };
     expect(params.mobile).toBe(false);
@@ -2532,7 +2520,7 @@ describe("browser_resize", () => {
     expect(result.success).toBe(true);
 
     const emulationCalls = cdp._getCalls(
-      "Emulation.setDeviceMetricsOverride"
+      "script.evaluate"
     );
     expect(emulationCalls[0].params).toEqual(
       expect.objectContaining({
@@ -2550,29 +2538,29 @@ describe("browser_resize", () => {
 // ===========================================================================
 
 describe("browser_click CDP event sequence verification", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     // Default: resolve element at coordinates (100, 200)
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "obj-1" },
     });
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [100, 200, 200, 200, 200, 250, 100, 250],
         width: 100,
         height: 50,
       },
     });
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Input.dispatchMouseEvent", {});
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
   });
 
   it("should send exactly 3 Input.dispatchMouseEvent calls in correct order", async () => {
     await browserClick(cdp as never, { x: 100, y: 200 });
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     expect(mouseEvents).toHaveLength(3);
 
     const [moved, pressed, released] = mouseEvents;
@@ -2593,7 +2581,7 @@ describe("browser_click CDP event sequence verification", () => {
     const timestamps: number[] = [];
     const originalSend = cdp.send;
     cdp.send = vi.fn(async (method: string, params?: unknown) => {
-      if (method === "Input.dispatchMouseEvent") {
+      if (method === "input.performActions") {
         const p = params as { type: string };
         if (p.type === "mousePressed" || p.type === "mouseReleased") {
           timestamps.push(Date.now());
@@ -2614,7 +2602,7 @@ describe("browser_click CDP event sequence verification", () => {
   it("should use modifiers=0 for unmodified clicks", async () => {
     await browserClick(cdp as never, { x: 100, y: 200 });
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     for (const event of mouseEvents) {
       const params = event.params as { modifiers?: number };
       // modifiers should be 0 or undefined (meaning no modifiers)
@@ -2628,12 +2616,12 @@ describe("browser_click CDP event sequence verification", () => {
 // ===========================================================================
 
 describe("Navigation loaderId handling", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Page.enable", {});
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp = createMockBiDi();
+    cdp._setResponse("session.subscribe", {});
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("document.title")) {
         return { result: { type: "string", value: "Test Page" } };
@@ -2649,10 +2637,7 @@ describe("Navigation loaderId handling", () => {
   });
 
   it("should await Page.loadEventFired when Page.navigate returns a loaderId", async () => {
-    cdp._setResponse("Page.navigate", {
-      frameId: "frame-1",
-      loaderId: "loader-123",
-    });
+    cdp._setResponse("browsingContext.navigate", { navigation: "nav-1", url: "about:blank" });
 
     // Simulate loadEventFired being emitted after navigate
     const navigatePromise = browserNavigate(cdp as never, {
@@ -2661,7 +2646,7 @@ describe("Navigation loaderId handling", () => {
 
     // Emit loadEventFired asynchronously
     setTimeout(() => {
-      cdp._emit("Page.loadEventFired", {});
+      cdp._emit("browsingContext.load", {});
     }, 10);
 
     const result = await navigatePromise;
@@ -2669,13 +2654,13 @@ describe("Navigation loaderId handling", () => {
     expect(result.url).toBe("https://example.com/");
     // Verify that we subscribed to Page.loadEventFired
     expect(cdp.on).toHaveBeenCalledWith(
-      "Page.loadEventFired",
+      "browsingContext.load",
       expect.any(Function)
     );
   });
 
   it("should NOT wait for Page.loadEventFired when no loaderId (same-document navigation)", async () => {
-    cdp._setResponse("Page.navigate", {
+    cdp._setResponse("browsingContext.navigate", {
       frameId: "frame-1",
       // No loaderId — same-document navigation (hash change, pushState)
     });
@@ -2687,14 +2672,14 @@ describe("Navigation loaderId handling", () => {
     expect(result.url).toBe("https://example.com/");
     // Should NOT have waited for loadEventFired since no loaderId
     const loadEventCalls = cdp.on.mock.calls.filter(
-      (call) => call[0] === "Page.loadEventFired"
+      (call) => call[0] === "browsingContext.load"
     );
     // Either no subscription, or subscription was immediately cancelled
     expect(loadEventCalls.length).toBeLessThanOrEqual(1);
   });
 
   it("should cancel the load event listener for same-document navigation", async () => {
-    cdp._setResponse("Page.navigate", {
+    cdp._setResponse("browsingContext.navigate", {
       frameId: "frame-1",
       // No loaderId
     });
@@ -2705,10 +2690,10 @@ describe("Navigation loaderId handling", () => {
 
     // If a listener was registered, it should have been cleaned up via off()
     const onCalls = cdp.on.mock.calls.filter(
-      (call) => call[0] === "Page.loadEventFired"
+      (call) => call[0] === "browsingContext.load"
     );
     const offCalls = cdp.off.mock.calls.filter(
-      (call) => call[0] === "Page.loadEventFired"
+      (call) => call[0] === "browsingContext.load"
     );
 
     // For same-document navigation, either no listener was registered,
@@ -2719,20 +2704,17 @@ describe("Navigation loaderId handling", () => {
   });
 
   it("should call Page.enable before Page.navigate", async () => {
-    cdp._setResponse("Page.navigate", {
-      frameId: "frame-1",
-      loaderId: "loader-1",
-    });
+    cdp._setResponse("browsingContext.navigate", { navigation: "nav-1", url: "about:blank" });
 
     const navigatePromise = browserNavigate(cdp as never, {
       url: "https://example.com",
     });
-    setTimeout(() => cdp._emit("Page.loadEventFired", {}), 10);
+    setTimeout(() => cdp._emit("browsingContext.load", {}), 10);
     await navigatePromise;
 
     const allCalls = cdp._calls;
-    const enableIdx = allCalls.findIndex((c) => c.method === "Page.enable");
-    const navigateIdx = allCalls.findIndex((c) => c.method === "Page.navigate");
+    const enableIdx = allCalls.findIndex((c) => c.method === "session.subscribe");
+    const navigateIdx = allCalls.findIndex((c) => c.method === "browsingContext.navigate");
 
     expect(enableIdx).toBeGreaterThanOrEqual(0);
     expect(navigateIdx).toBeGreaterThan(enableIdx);
@@ -2744,15 +2726,15 @@ describe("Navigation loaderId handling", () => {
 // ===========================================================================
 
 describe("waitForDocumentReady", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should poll until document.readyState === 'complete'", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount <= 2) {
         return { result: { type: "string", value: "loading" } };
@@ -2766,7 +2748,7 @@ describe("waitForDocumentReady", () => {
   });
 
   it("should reject with timeout error if readyState never reaches 'complete'", async () => {
-    cdp._setResponse("Runtime.evaluate", () => ({
+    cdp._setResponse("script.evaluate", () => ({
       result: { type: "string", value: "interactive" },
     }));
 
@@ -2777,7 +2759,7 @@ describe("waitForDocumentReady", () => {
 
   it("should retry on temporary Runtime.evaluate failures during navigation", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount <= 2) {
         throw new Error("Execution context was destroyed");
@@ -2794,7 +2776,7 @@ describe("waitForDocumentReady", () => {
     const timestamps: number[] = [];
     let callCount = 0;
 
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       timestamps.push(Date.now());
       callCount++;
       if (callCount < 4) {
@@ -2819,17 +2801,17 @@ describe("waitForDocumentReady", () => {
 // ===========================================================================
 
 describe("keyboard type (at current focus, no selector)", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Input.dispatchKeyEvent", {});
+    cdp = createMockBiDi();
+    cdp._setResponse("input.performActions", {});
   });
 
   it("should dispatch individual keyDown/char/keyUp events for each character", async () => {
     await browserKeyboard(cdp as never, { action: "type", text: "hi" });
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     // For "hi": keyDown('h'), char('h'), keyUp('h'), keyDown('i'), char('i'), keyUp('i')
     // = 6 events (3 per character)
     expect(keyEvents.length).toBe(6);
@@ -2849,19 +2831,19 @@ describe("keyboard type (at current focus, no selector)", () => {
     await browserKeyboard(cdp as never, { action: "type", text: "abc" });
 
     // Should not call any DOM resolution methods
-    const domCalls = cdp._getCalls("DOM.querySelector");
-    const resolveCalls = cdp._getCalls("DOM.resolveNode");
+    const domCalls = cdp._getCalls("script.evaluate");
+    const resolveCalls = cdp._getCalls("script.evaluate");
     expect(domCalls).toHaveLength(0);
     expect(resolveCalls).toHaveLength(0);
   });
 });
 
 describe("keyboard inserttext (no key events)", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Input.insertText", {});
+    cdp = createMockBiDi();
+    cdp._setResponse("input.performActions", {});
   });
 
   it("should call Input.insertText without keyDown/keyUp events", async () => {
@@ -2870,14 +2852,14 @@ describe("keyboard inserttext (no key events)", () => {
       text: "hello world",
     });
 
-    const insertCalls = cdp._getCalls("Input.insertText");
+    const insertCalls = cdp._getCalls("input.performActions");
     expect(insertCalls).toHaveLength(1);
     expect((insertCalls[0].params as { text: string }).text).toBe(
       "hello world"
     );
 
     // No key events should have been dispatched
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     expect(keyEvents).toHaveLength(0);
   });
 });
@@ -2887,32 +2869,32 @@ describe("keyboard inserttext (no key events)", () => {
 // ===========================================================================
 
 describe("click --new-tab", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Runtime.evaluate", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "obj-1" },
     });
-    cdp._setResponse("DOM.getDocument", {
+    cdp._setResponse("script.evaluate", {
       root: { nodeId: 1 },
     });
-    cdp._setResponse("DOM.querySelector", { nodeId: 42 });
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", { nodeId: 42 });
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [100, 200, 200, 200, 200, 250, 100, 250],
         width: 100,
         height: 50,
       },
     });
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Input.dispatchMouseEvent", {});
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
   });
 
   it("should use Meta/Ctrl modifier to open link in new tab", async () => {
     await browserClick(cdp as never, { selector: "a.link", newTab: true });
 
-    const mouseEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const mouseEvents = cdp._getCalls("input.performActions");
     const pressedEvent = mouseEvents.find(
       (e) => (e.params as { type: string }).type === "mousePressed"
     );
@@ -2930,17 +2912,17 @@ describe("click --new-tab", () => {
 // ===========================================================================
 
 describe("keydown (hold without release)", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Input.dispatchKeyEvent", {});
+    cdp = createMockBiDi();
+    cdp._setResponse("input.performActions", {});
   });
 
   it("should send only keyDown event, no keyUp", async () => {
     await browserKeyboard(cdp as never, { action: "keydown", key: "Shift" });
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     const keyDownEvents = keyEvents.filter(
       (e) => (e.params as { type: string }).type === "keyDown"
     );
@@ -2954,17 +2936,17 @@ describe("keydown (hold without release)", () => {
 });
 
 describe("keyup (release held key)", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Input.dispatchKeyEvent", {});
+    cdp = createMockBiDi();
+    cdp._setResponse("input.performActions", {});
   });
 
   it("should send only keyUp event, no keyDown", async () => {
     await browserKeyboard(cdp as never, { action: "keyup", key: "Shift" });
 
-    const keyEvents = cdp._getCalls("Input.dispatchKeyEvent");
+    const keyEvents = cdp._getCalls("input.performActions");
     const keyDownEvents = keyEvents.filter(
       (e) => (e.params as { type: string }).type === "keyDown"
     );
@@ -2982,18 +2964,18 @@ describe("keyup (release held key)", () => {
 // ===========================================================================
 
 describe("scrollintoview (dedicated command)", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("script.callFunction", {
       result: { type: "undefined" },
     });
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "obj-1" },
     });
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-1" },
     });
     cdp._setResponse("DOM.describeNode", {
@@ -3006,8 +2988,8 @@ describe("scrollintoview (dedicated command)", () => {
 
     // Should have called either DOM.scrollIntoViewIfNeeded or
     // Runtime.callFunctionOn with scrollIntoView
-    const scrollCalls = cdp._getCalls("DOM.scrollIntoViewIfNeeded");
-    const runtimeCalls = cdp._getCalls("Runtime.callFunctionOn").filter(
+    const scrollCalls = cdp._getCalls("script.evaluate");
+    const runtimeCalls = cdp._getCalls("script.callFunction").filter(
       (c) =>
         ((c.params as { functionDeclaration?: string }).functionDeclaration ?? "")
           .includes("scrollIntoView")
@@ -3019,8 +3001,8 @@ describe("scrollintoview (dedicated command)", () => {
   it("should work with @eN ref", async () => {
     await browserScrollIntoView(cdp as never, { ref: "@e5" });
 
-    const scrollCalls = cdp._getCalls("DOM.scrollIntoViewIfNeeded");
-    const runtimeCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const scrollCalls = cdp._getCalls("script.evaluate");
+    const runtimeCalls = cdp._getCalls("script.callFunction");
     expect(scrollCalls.length + runtimeCalls.length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -3030,13 +3012,13 @@ describe("scrollintoview (dedicated command)", () => {
 // ===========================================================================
 
 describe("check / uncheck (idempotent)", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Input.dispatchMouseEvent", {});
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [10, 10, 30, 10, 30, 30, 10, 30],
         width: 20,
@@ -3046,59 +3028,59 @@ describe("check / uncheck (idempotent)", () => {
   });
 
   it("should be no-op if checkbox is already checked", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: true },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "boolean", value: true },
     });
 
     await browserCheck(cdp as never, { selector: "#agree" });
 
     // No click events should be dispatched since already checked
-    const clickEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const clickEvents = cdp._getCalls("input.performActions");
     expect(clickEvents).toHaveLength(0);
   });
 
   it("should click to check if checkbox is unchecked", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: false },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "boolean", value: false },
     });
 
     await browserCheck(cdp as never, { selector: "#agree" });
 
-    const clickEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const clickEvents = cdp._getCalls("input.performActions");
     expect(clickEvents.length).toBeGreaterThan(0);
   });
 
   it("should be no-op if checkbox is already unchecked when uncheck called", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: false },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "boolean", value: false },
     });
 
     await browserUncheck(cdp as never, { selector: "#agree" });
 
-    const clickEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const clickEvents = cdp._getCalls("input.performActions");
     expect(clickEvents).toHaveLength(0);
   });
 
   it("should click to uncheck if checkbox is checked", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "boolean", value: true },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "boolean", value: true },
     });
 
     await browserUncheck(cdp as never, { selector: "#agree" });
 
-    const clickEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const clickEvents = cdp._getCalls("input.performActions");
     expect(clickEvents.length).toBeGreaterThan(0);
   });
 });
@@ -3108,21 +3090,21 @@ describe("check / uncheck (idempotent)", () => {
 // ===========================================================================
 
 describe("focus element", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("DOM.focus", {});
-    cdp._setResponse("Runtime.evaluate", {
+    cdp = createMockBiDi();
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "obj-1" },
     });
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-1" },
     });
     cdp._setResponse("DOM.describeNode", {
       node: { nodeId: 1, backendNodeId: 1 },
     });
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.callFunction", {
       result: { type: "undefined" },
     });
   });
@@ -3131,8 +3113,8 @@ describe("focus element", () => {
     await browserFocus(cdp as never, { selector: "#email-input" });
 
     // Should call DOM.focus or Runtime.callFunctionOn with .focus()
-    const focusCalls = cdp._getCalls("DOM.focus");
-    const runtimeFocusCalls = cdp._getCalls("Runtime.callFunctionOn").filter(
+    const focusCalls = cdp._getCalls("script.evaluate");
+    const runtimeFocusCalls = cdp._getCalls("script.callFunction").filter(
       (c) =>
         ((c.params as { functionDeclaration?: string }).functionDeclaration ?? "")
           .includes("focus")
@@ -3146,15 +3128,15 @@ describe("focus element", () => {
   it("should not dispatch click events", async () => {
     await browserFocus(cdp as never, { selector: "#email-input" });
 
-    const clickEvents = cdp._getCalls("Input.dispatchMouseEvent");
+    const clickEvents = cdp._getCalls("input.performActions");
     expect(clickEvents).toHaveLength(0);
   });
 
   it("should work with @eN ref", async () => {
     await browserFocus(cdp as never, { ref: "@e3" });
 
-    const focusCalls = cdp._getCalls("DOM.focus");
-    const runtimeFocusCalls = cdp._getCalls("Runtime.callFunctionOn");
+    const focusCalls = cdp._getCalls("script.evaluate");
+    const runtimeFocusCalls = cdp._getCalls("script.callFunction");
     expect(focusCalls.length + runtimeFocusCalls.length).toBeGreaterThanOrEqual(
       1
     );
@@ -3166,15 +3148,15 @@ describe("focus element", () => {
 // ===========================================================================
 
 describe("wait --url pattern", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should poll current URL until it matches glob pattern", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount <= 2) {
         return {
@@ -3192,7 +3174,7 @@ describe("wait --url pattern", () => {
   });
 
   it("should reject on timeout if URL never matches", async () => {
-    cdp._setResponse("Runtime.evaluate", () => ({
+    cdp._setResponse("script.evaluate", () => ({
       result: { type: "string", value: "https://example.com/login" },
     }));
 
@@ -3203,15 +3185,15 @@ describe("wait --url pattern", () => {
 });
 
 describe("wait --fn JS condition", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should poll Runtime.evaluate until expression returns truthy", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount <= 2) {
         return { result: { type: "boolean", value: false } };
@@ -3225,7 +3207,7 @@ describe("wait --fn JS condition", () => {
   });
 
   it("should reject on timeout if expression never returns true", async () => {
-    cdp._setResponse("Runtime.evaluate", () => ({
+    cdp._setResponse("script.evaluate", () => ({
       result: { type: "boolean", value: false },
     }));
 
@@ -3239,15 +3221,15 @@ describe("wait --fn JS condition", () => {
 });
 
 describe("wait --state hidden", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should poll until element is no longer visible", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       if (callCount <= 2) {
         // Element still visible
@@ -3267,7 +3249,7 @@ describe("wait --state hidden", () => {
 
   it("should succeed immediately if element is already hidden", async () => {
     let callCount = 0;
-    cdp._setResponse("Runtime.evaluate", () => {
+    cdp._setResponse("script.evaluate", () => {
       callCount++;
       // Element is already hidden on first check
       return { result: { type: "boolean", value: false } };
@@ -3288,20 +3270,20 @@ describe("wait --state hidden", () => {
 // ===========================================================================
 
 describe("tab new", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Target.createTarget", {
-      targetId: "new-target-1",
+    cdp = createMockBiDi();
+    cdp._setResponse("browsingContext.create", {
+      context: "new-target-1",
     });
-    cdp._setResponse("Target.activateTarget", {});
+    cdp._setResponse("browsingContext.activate", {});
   });
 
   it("should call Target.createTarget with URL", async () => {
     await browserTabNew(cdp as never, { url: "https://example.com" });
 
-    const createCalls = cdp._getCalls("Target.createTarget");
+    const createCalls = cdp._getCalls("browsingContext.create");
     expect(createCalls).toHaveLength(1);
     expect((createCalls[0].params as { url: string }).url).toBe(
       "https://example.com"
@@ -3311,7 +3293,7 @@ describe("tab new", () => {
   it("should call Target.createTarget with about:blank when no URL", async () => {
     await browserTabNew(cdp as never, {});
 
-    const createCalls = cdp._getCalls("Target.createTarget");
+    const createCalls = cdp._getCalls("browsingContext.create");
     expect(createCalls).toHaveLength(1);
     expect((createCalls[0].params as { url: string }).url).toBe("about:blank");
   });
@@ -3321,30 +3303,30 @@ describe("tab new", () => {
       url: "https://example.com",
     });
 
-    const activateCalls = cdp._getCalls("Target.activateTarget");
+    const activateCalls = cdp._getCalls("browsingContext.activate");
     expect(activateCalls).toHaveLength(1);
     expect(
-      (activateCalls[0].params as { targetId: string }).targetId
+      (activateCalls[0].params as { context: string }).targetId
     ).toBe("new-target-1");
     expect(result.targetId).toBe("new-target-1");
   });
 });
 
 describe("window new", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
-    cdp._setResponse("Target.createTarget", {
-      targetId: "new-window-target-1",
+    cdp = createMockBiDi();
+    cdp._setResponse("browsingContext.create", {
+      context: "new-window-target-1",
     });
-    cdp._setResponse("Target.activateTarget", {});
+    cdp._setResponse("browsingContext.activate", {});
   });
 
   it("should call Target.createTarget with newWindow=true", async () => {
     await browserWindowNew(cdp as never, { url: "https://example.com" });
 
-    const createCalls = cdp._getCalls("Target.createTarget");
+    const createCalls = cdp._getCalls("browsingContext.create");
     expect(createCalls).toHaveLength(1);
     expect(
       (createCalls[0].params as { newWindow: boolean }).newWindow
@@ -3357,10 +3339,10 @@ describe("window new", () => {
 // ===========================================================================
 
 describe("frame switch", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     cdp._setResponse("Page.getFrameTree", {
       frameTree: {
         frame: { id: "main-frame", url: "https://example.com" },
@@ -3375,7 +3357,7 @@ describe("frame switch", () => {
         ],
       },
     });
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "iframe-obj-1" },
     });
   });
@@ -3400,10 +3382,10 @@ describe("frame switch", () => {
 });
 
 describe("frame main", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should switch back to main frame execution context", async () => {
@@ -3419,14 +3401,14 @@ describe("frame main", () => {
 // ===========================================================================
 
 describe("clipboard", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   it("should read clipboard text via navigator.clipboard.readText()", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "string", value: "clipboard content" },
     });
 
@@ -3434,7 +3416,7 @@ describe("clipboard", () => {
 
     expect(result.text).toBe("clipboard content");
 
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
     const clipboardReadCall = evalCalls.find((c) =>
       ((c.params as { expression: string }).expression ?? "").includes(
         "clipboard.readText"
@@ -3444,13 +3426,13 @@ describe("clipboard", () => {
   });
 
   it("should write clipboard text via navigator.clipboard.writeText()", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "undefined" },
     });
 
     await browserClipboardWrite(cdp as never, { text: "Hello, World!" });
 
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
     const clipboardWriteCall = evalCalls.find((c) =>
       ((c.params as { expression: string }).expression ?? "").includes(
         "clipboard.writeText"
@@ -3469,10 +3451,10 @@ describe("clipboard", () => {
 // ===========================================================================
 
 describe("TS-16: Cross-origin iframe complete handling", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     cdp._setResponse("Page.getFrameTree", {
       frameTree: {
         frame: {
@@ -3539,10 +3521,10 @@ describe("TS-16: Cross-origin iframe complete handling", () => {
 // ===========================================================================
 
 describe("Semantic Locators", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     cdp._setResponse("Accessibility.getFullAXTree", {
       nodes: [
         {
@@ -3559,25 +3541,25 @@ describe("Semantic Locators", () => {
         },
       ],
     });
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "obj-1" },
     });
-    cdp._setResponse("DOM.resolveNode", {
+    cdp._setResponse("script.evaluate", {
       object: { objectId: "obj-1" },
     });
     cdp._setResponse("DOM.describeNode", {
       node: { nodeId: 1, backendNodeId: 1 },
     });
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", {
       model: {
         content: [50, 50, 150, 50, 150, 80, 50, 80],
         width: 100,
         height: 30,
       },
     });
-    cdp._setResponse("DOM.scrollIntoViewIfNeeded", {});
-    cdp._setResponse("Input.dispatchMouseEvent", {});
-    cdp._setResponse("Runtime.callFunctionOn", {
+    cdp._setResponse("script.evaluate", {});
+    cdp._setResponse("input.performActions", {});
+    cdp._setResponse("script.callFunction", {
       result: { type: "string", value: "matched-text" },
     });
   });
@@ -3600,7 +3582,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find label: should locate by associated label", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "labeled-input-1" },
     });
 
@@ -3611,7 +3593,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find placeholder: should locate by placeholder attribute", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "placeholder-input-1" },
     });
 
@@ -3624,7 +3606,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find alt: should locate by alt text", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "img-1" },
     });
 
@@ -3635,7 +3617,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find title: should locate by title attribute", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "titled-1" },
     });
 
@@ -3646,7 +3628,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find testid: should locate by data-testid", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: { type: "object", objectId: "testid-1" },
     });
 
@@ -3657,7 +3639,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find first: should select first matching element", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: {
         type: "object",
         objectId: "first-1",
@@ -3673,7 +3655,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find last: should select last matching element", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: {
         type: "object",
         objectId: "last-1",
@@ -3688,7 +3670,7 @@ describe("Semantic Locators", () => {
   });
 
   it("find nth: should select nth matching element", async () => {
-    cdp._setResponse("Runtime.evaluate", {
+    cdp._setResponse("script.evaluate", {
       result: {
         type: "object",
         objectId: "nth-1",
@@ -3705,7 +3687,7 @@ describe("Semantic Locators", () => {
 
   it("find with --exact: should require exact text match", async () => {
     // With exact=true, "Sign In" should NOT match "Sign In Now"
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("exact")) {
         return { result: { type: "object", objectId: "exact-match-1" } };
@@ -3728,11 +3710,11 @@ describe("Semantic Locators", () => {
 // ===========================================================================
 
 describe("browser_route", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
     resetInterceptState();
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   afterEach(() => {
@@ -3740,8 +3722,8 @@ describe("browser_route", () => {
   });
 
   it("should intercept matching URL and return mock response body", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     await browserRoute(cdp as never, {
       url: "https://api.example.com/users",
@@ -3749,7 +3731,7 @@ describe("browser_route", () => {
     });
 
     // Verify Fetch.enable was called with the correct URL pattern
-    const enableCalls = cdp._getCalls("Fetch.enable");
+    const enableCalls = cdp._getCalls("network.addIntercept");
     expect(enableCalls).toHaveLength(1);
     expect(enableCalls[0].params).toEqual(
       expect.objectContaining({
@@ -3760,7 +3742,7 @@ describe("browser_route", () => {
     );
 
     // Simulate a matching request being paused
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-1",
       request: {
         url: "https://api.example.com/users",
@@ -3769,7 +3751,7 @@ describe("browser_route", () => {
     });
 
     // Verify Fetch.fulfillRequest was called with the mock body
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(1);
     expect(fulfillCalls[0].params).toEqual(
       expect.objectContaining({
@@ -3780,8 +3762,8 @@ describe("browser_route", () => {
   });
 
   it("should set correct response status code", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     await browserRoute(cdp as never, {
       url: "https://api.example.com/not-found",
@@ -3790,7 +3772,7 @@ describe("browser_route", () => {
     });
 
     // Simulate request paused
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-2",
       request: {
         url: "https://api.example.com/not-found",
@@ -3798,7 +3780,7 @@ describe("browser_route", () => {
       },
     });
 
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(1);
     expect(fulfillCalls[0].params).toEqual(
       expect.objectContaining({
@@ -3809,8 +3791,8 @@ describe("browser_route", () => {
   });
 
   it("should set response headers", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     await browserRoute(cdp as never, {
       url: "https://api.example.com/data",
@@ -3822,7 +3804,7 @@ describe("browser_route", () => {
     });
 
     // Simulate request paused
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-3",
       request: {
         url: "https://api.example.com/data",
@@ -3830,7 +3812,7 @@ describe("browser_route", () => {
       },
     });
 
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(1);
     expect(fulfillCalls[0].params).toEqual(
       expect.objectContaining({
@@ -3844,15 +3826,15 @@ describe("browser_route", () => {
   });
 
   it("should support glob URL patterns (e.g., '**/api/**')", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     await browserRoute(cdp as never, {
       url: "**/api/**",
       body: '{"mocked": true}',
     });
 
-    const enableCalls = cdp._getCalls("Fetch.enable");
+    const enableCalls = cdp._getCalls("network.addIntercept");
     expect(enableCalls).toHaveLength(1);
     expect(enableCalls[0].params).toEqual(
       expect.objectContaining({
@@ -3863,7 +3845,7 @@ describe("browser_route", () => {
     );
 
     // Simulate a matching request
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-glob-1",
       request: {
         url: "https://example.com/api/v2/users",
@@ -3871,7 +3853,7 @@ describe("browser_route", () => {
       },
     });
 
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(1);
     expect(fulfillCalls[0].params).toEqual(
       expect.objectContaining({ requestId: "req-glob-1" })
@@ -3879,8 +3861,8 @@ describe("browser_route", () => {
   });
 
   it("should allow multiple routes for different patterns", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     await browserRoute(cdp as never, {
       url: "https://api.example.com/users",
@@ -3894,11 +3876,11 @@ describe("browser_route", () => {
 
     // Both patterns should be registered via Fetch.enable
     // The second call should re-enable with both patterns
-    const enableCalls = cdp._getCalls("Fetch.enable");
+    const enableCalls = cdp._getCalls("network.addIntercept");
     expect(enableCalls.length).toBeGreaterThanOrEqual(2);
 
     // Simulate request for /users
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-users",
       request: {
         url: "https://api.example.com/users",
@@ -3907,7 +3889,7 @@ describe("browser_route", () => {
     });
 
     // Simulate request for /posts
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-posts",
       request: {
         url: "https://api.example.com/posts",
@@ -3915,7 +3897,7 @@ describe("browser_route", () => {
       },
     });
 
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(2);
 
     const usersFulfill = fulfillCalls.find(
@@ -3929,8 +3911,8 @@ describe("browser_route", () => {
   });
 
   it("should override existing route for same pattern", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     // First route
     await browserRoute(cdp as never, {
@@ -3945,7 +3927,7 @@ describe("browser_route", () => {
     });
 
     // Simulate request — should use the LATEST route definition
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-config",
       request: {
         url: "https://api.example.com/config",
@@ -3953,7 +3935,7 @@ describe("browser_route", () => {
       },
     });
 
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(1);
     // The body should be the second (overridden) value, base64-encoded
     const body = fulfillCalls[0].params as Record<string, unknown>;
@@ -3963,8 +3945,8 @@ describe("browser_route", () => {
   });
 
   it("should handle JSON body (auto-stringify if object)", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     // Pass an object as body — implementation should JSON.stringify it
     await browserRoute(cdp as never, {
@@ -3972,7 +3954,7 @@ describe("browser_route", () => {
       body: { data: [1, 2, 3] } as any,
     });
 
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-json",
       request: {
         url: "https://api.example.com/json",
@@ -3980,7 +3962,7 @@ describe("browser_route", () => {
       },
     });
 
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(1);
     // Decode body and verify JSON was stringified
     const body = fulfillCalls[0].params as Record<string, unknown>;
@@ -3990,9 +3972,9 @@ describe("browser_route", () => {
   });
 
   it("should pass non-matching requests through (Fetch.continueRequest)", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
-    cdp._setResponse("Fetch.continueRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
+    cdp._setResponse("network.continueRequest", {});
 
     await browserRoute(cdp as never, {
       url: "https://api.example.com/users",
@@ -4000,7 +3982,7 @@ describe("browser_route", () => {
     });
 
     // Simulate a NON-matching request
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-other",
       request: {
         url: "https://cdn.example.com/image.png",
@@ -4009,11 +3991,11 @@ describe("browser_route", () => {
     });
 
     // Should NOT fulfill this request
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(0);
 
     // Should continue the non-matching request
-    const continueCalls = cdp._getCalls("Fetch.continueRequest");
+    const continueCalls = cdp._getCalls("network.continueRequest");
     expect(continueCalls).toHaveLength(1);
     expect(continueCalls[0].params).toEqual(
       expect.objectContaining({ requestId: "req-other" })
@@ -4026,11 +4008,11 @@ describe("browser_route", () => {
 // ===========================================================================
 
 describe("browser_abort", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
     resetInterceptState();
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   afterEach(() => {
@@ -4038,15 +4020,15 @@ describe("browser_abort", () => {
   });
 
   it("should block matching URL pattern", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.failRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.failRequest", {});
 
     await browserAbort(cdp as never, {
       url: "https://ads.example.com/*",
     });
 
     // Verify Fetch.enable was called with the URL pattern
-    const enableCalls = cdp._getCalls("Fetch.enable");
+    const enableCalls = cdp._getCalls("network.addIntercept");
     expect(enableCalls).toHaveLength(1);
     expect(enableCalls[0].params).toEqual(
       expect.objectContaining({
@@ -4057,7 +4039,7 @@ describe("browser_abort", () => {
     );
 
     // Simulate a matching request being paused
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-ad-1",
       request: {
         url: "https://ads.example.com/banner.js",
@@ -4066,7 +4048,7 @@ describe("browser_abort", () => {
     });
 
     // Should fail (abort) the request
-    const failCalls = cdp._getCalls("Fetch.failRequest");
+    const failCalls = cdp._getCalls("network.failRequest");
     expect(failCalls).toHaveLength(1);
     expect(failCalls[0].params).toEqual(
       expect.objectContaining({ requestId: "req-ad-1" })
@@ -4074,14 +4056,14 @@ describe("browser_abort", () => {
   });
 
   it('should use "BlockedByClient" as failure reason', async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.failRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.failRequest", {});
 
     await browserAbort(cdp as never, {
       url: "https://tracker.example.com/*",
     });
 
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-tracker-1",
       request: {
         url: "https://tracker.example.com/pixel.gif",
@@ -4089,7 +4071,7 @@ describe("browser_abort", () => {
       },
     });
 
-    const failCalls = cdp._getCalls("Fetch.failRequest");
+    const failCalls = cdp._getCalls("network.failRequest");
     expect(failCalls).toHaveLength(1);
     expect(failCalls[0].params).toEqual(
       expect.objectContaining({
@@ -4100,14 +4082,14 @@ describe("browser_abort", () => {
   });
 
   it("should support glob URL patterns", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.failRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.failRequest", {});
 
     await browserAbort(cdp as never, {
       url: "**/analytics/**",
     });
 
-    const enableCalls = cdp._getCalls("Fetch.enable");
+    const enableCalls = cdp._getCalls("network.addIntercept");
     expect(enableCalls).toHaveLength(1);
     expect(enableCalls[0].params).toEqual(
       expect.objectContaining({
@@ -4118,7 +4100,7 @@ describe("browser_abort", () => {
     );
 
     // Simulate a matching request
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-analytics",
       request: {
         url: "https://example.com/analytics/event",
@@ -4126,7 +4108,7 @@ describe("browser_abort", () => {
       },
     });
 
-    const failCalls = cdp._getCalls("Fetch.failRequest");
+    const failCalls = cdp._getCalls("network.failRequest");
     expect(failCalls).toHaveLength(1);
     expect(failCalls[0].params).toEqual(
       expect.objectContaining({
@@ -4137,8 +4119,8 @@ describe("browser_abort", () => {
   });
 
   it("should allow multiple abort patterns", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.failRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.failRequest", {});
 
     await browserAbort(cdp as never, {
       url: "https://ads.example.com/*",
@@ -4149,7 +4131,7 @@ describe("browser_abort", () => {
     });
 
     // Simulate matching requests for both patterns
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-ad",
       request: {
         url: "https://ads.example.com/banner.js",
@@ -4157,7 +4139,7 @@ describe("browser_abort", () => {
       },
     });
 
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-tracker",
       request: {
         url: "https://tracker.example.com/pixel.gif",
@@ -4165,7 +4147,7 @@ describe("browser_abort", () => {
       },
     });
 
-    const failCalls = cdp._getCalls("Fetch.failRequest");
+    const failCalls = cdp._getCalls("network.failRequest");
     expect(failCalls).toHaveLength(2);
 
     const adFail = failCalls.find(
@@ -4179,16 +4161,16 @@ describe("browser_abort", () => {
   });
 
   it("should not affect non-matching requests", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.failRequest", {});
-    cdp._setResponse("Fetch.continueRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.failRequest", {});
+    cdp._setResponse("network.continueRequest", {});
 
     await browserAbort(cdp as never, {
       url: "https://ads.example.com/*",
     });
 
     // Simulate a NON-matching request
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-legit",
       request: {
         url: "https://api.example.com/data",
@@ -4197,11 +4179,11 @@ describe("browser_abort", () => {
     });
 
     // Should NOT fail this request
-    const failCalls = cdp._getCalls("Fetch.failRequest");
+    const failCalls = cdp._getCalls("network.failRequest");
     expect(failCalls).toHaveLength(0);
 
     // Should continue the non-matching request
-    const continueCalls = cdp._getCalls("Fetch.continueRequest");
+    const continueCalls = cdp._getCalls("network.continueRequest");
     expect(continueCalls).toHaveLength(1);
     expect(continueCalls[0].params).toEqual(
       expect.objectContaining({ requestId: "req-legit" })
@@ -4214,11 +4196,11 @@ describe("browser_abort", () => {
 // ===========================================================================
 
 describe("browser_unroute", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
     resetInterceptState();
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
   });
 
   afterEach(() => {
@@ -4226,9 +4208,9 @@ describe("browser_unroute", () => {
   });
 
   it("should remove specific route by URL pattern", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
-    cdp._setResponse("Fetch.continueRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
+    cdp._setResponse("network.continueRequest", {});
 
     // Set up a route
     await browserRoute(cdp as never, {
@@ -4245,7 +4227,7 @@ describe("browser_unroute", () => {
     cdp._calls.length = 0;
 
     // Simulate a request that previously would have been intercepted
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-after-unroute",
       request: {
         url: "https://api.example.com/users",
@@ -4254,18 +4236,18 @@ describe("browser_unroute", () => {
     });
 
     // Should NOT fulfill — the route was removed
-    const fulfillCalls = cdp._getCalls("Fetch.fulfillRequest");
+    const fulfillCalls = cdp._getCalls("network.provideResponse");
     expect(fulfillCalls).toHaveLength(0);
 
     // Should continue the request (or no longer intercept it at all)
-    const continueCalls = cdp._getCalls("Fetch.continueRequest");
+    const continueCalls = cdp._getCalls("network.continueRequest");
     expect(continueCalls).toHaveLength(1);
   });
 
   it("should remove specific abort by URL pattern", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.failRequest", {});
-    cdp._setResponse("Fetch.continueRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.failRequest", {});
+    cdp._setResponse("network.continueRequest", {});
 
     // Set up an abort
     await browserAbort(cdp as never, {
@@ -4281,7 +4263,7 @@ describe("browser_unroute", () => {
     cdp._calls.length = 0;
 
     // Simulate a request that previously would have been blocked
-    await cdp._emitAsync("Fetch.requestPaused", {
+    await cdp._emitAsync("network.beforeRequestSent", {
       requestId: "req-after-unabort",
       request: {
         url: "https://ads.example.com/banner.js",
@@ -4290,19 +4272,19 @@ describe("browser_unroute", () => {
     });
 
     // Should NOT fail — the abort was removed
-    const failCalls = cdp._getCalls("Fetch.failRequest");
+    const failCalls = cdp._getCalls("network.failRequest");
     expect(failCalls).toHaveLength(0);
 
     // Should continue the request
-    const continueCalls = cdp._getCalls("Fetch.continueRequest");
+    const continueCalls = cdp._getCalls("network.continueRequest");
     expect(continueCalls).toHaveLength(1);
   });
 
   it("should remove all intercepts when {all: true}", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.disable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
-    cdp._setResponse("Fetch.failRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.removeIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
+    cdp._setResponse("network.failRequest", {});
 
     // Set up multiple routes and aborts
     await browserRoute(cdp as never, {
@@ -4323,14 +4305,14 @@ describe("browser_unroute", () => {
     await browserUnroute(cdp as never, { all: true });
 
     // Fetch.disable should have been called since all intercepts are removed
-    const disableCalls = cdp._getCalls("Fetch.disable");
+    const disableCalls = cdp._getCalls("network.removeIntercept");
     expect(disableCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should call Fetch.disable when no intercepts remain", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.disable", {});
-    cdp._setResponse("Fetch.fulfillRequest", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.removeIntercept", {});
+    cdp._setResponse("network.provideResponse", {});
 
     // Set up a single route
     await browserRoute(cdp as never, {
@@ -4344,13 +4326,13 @@ describe("browser_unroute", () => {
     });
 
     // Fetch.disable should be called when the last intercept is removed
-    const disableCalls = cdp._getCalls("Fetch.disable");
+    const disableCalls = cdp._getCalls("network.removeIntercept");
     expect(disableCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should be idempotent (removing non-existent pattern is ok)", async () => {
-    cdp._setResponse("Fetch.enable", {});
-    cdp._setResponse("Fetch.disable", {});
+    cdp._setResponse("network.addIntercept", {});
+    cdp._setResponse("network.removeIntercept", {});
 
     // Remove a pattern that was never registered — should not throw
     await expect(
@@ -4366,7 +4348,7 @@ describe("browser_unroute", () => {
 // ===========================================================================
 
 describe("browser_find", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   // Sample AX tree nodes for tests
   const sampleNodes = [
@@ -4422,7 +4404,7 @@ describe("browser_find", () => {
   ];
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     cdp._setResponse("Accessibility.getFullAXTree", { nodes: sampleNodes });
   });
 
@@ -4512,16 +4494,16 @@ describe("browser_find", () => {
 // ===========================================================================
 
 describe("browser_diff", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   // A fake base64 PNG string (not valid PNG but sufficient for mock tests)
   const fakeBase64A = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk";
   const fakeBase64B = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8";
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     // Default responses for Runtime.evaluate
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string; awaitPromise?: boolean };
       // For the variable assignment calls, return simple value
       if (p.expression.startsWith("window._diffBefore") || p.expression.startsWith("window._diffAfter")) {
@@ -4550,7 +4532,7 @@ describe("browser_diff", () => {
       }
       return { result: { type: "undefined" } };
     });
-    cdp._setResponse("Page.captureScreenshot", { data: fakeBase64A });
+    cdp._setResponse("browsingContext.captureScreenshot", { data: fakeBase64A });
   });
 
   it("should return identical: true for same screenshot", async () => {
@@ -4566,7 +4548,7 @@ describe("browser_diff", () => {
   });
 
   it("should detect pixel differences between two images", async () => {
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string; awaitPromise?: boolean };
       if (p.expression.startsWith("window._diff") || p.expression.startsWith("delete window._diff")) {
         return { result: { type: "string", value: "" } };
@@ -4601,7 +4583,7 @@ describe("browser_diff", () => {
   });
 
   it("should return diff percentage", async () => {
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string; awaitPromise?: boolean };
       if (p.expression.startsWith("window._diff") || p.expression.startsWith("delete window._diff")) {
         return { result: { type: "string", value: "" } };
@@ -4648,7 +4630,7 @@ describe("browser_diff", () => {
   });
 
   it("should capture current page when before is 'current'", async () => {
-    cdp._setResponse("Page.captureScreenshot", { data: fakeBase64A });
+    cdp._setResponse("browsingContext.captureScreenshot", { data: fakeBase64A });
 
     const result = await browserDiff(cdp as never, {
       before: "current",
@@ -4656,20 +4638,20 @@ describe("browser_diff", () => {
     });
 
     // Should have called Page.captureScreenshot for "before"
-    const screenshotCalls = cdp._getCalls("Page.captureScreenshot");
+    const screenshotCalls = cdp._getCalls("browsingContext.captureScreenshot");
     expect(screenshotCalls.length).toBeGreaterThanOrEqual(1);
     expect(result.identical).toBe(true);
   });
 
   it("should capture current page when after is not provided", async () => {
-    cdp._setResponse("Page.captureScreenshot", { data: fakeBase64A });
+    cdp._setResponse("browsingContext.captureScreenshot", { data: fakeBase64A });
 
     const result = await browserDiff(cdp as never, {
       before: fakeBase64A,
     });
 
     // Should have called Page.captureScreenshot for "after"
-    const screenshotCalls = cdp._getCalls("Page.captureScreenshot");
+    const screenshotCalls = cdp._getCalls("browsingContext.captureScreenshot");
     expect(screenshotCalls.length).toBeGreaterThanOrEqual(1);
     expect(result.identical).toBe(true);
   });
@@ -4684,7 +4666,7 @@ describe("browser_diff", () => {
     });
 
     // The threshold should be embedded in the comparison expression
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
     const comparisonCall = evalCalls.find(
       (c) => (c.params as { awaitPromise?: boolean }).awaitPromise === true,
     );
@@ -4694,7 +4676,7 @@ describe("browser_diff", () => {
   });
 
   it("should handle different image dimensions gracefully", async () => {
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string; awaitPromise?: boolean };
       if (p.expression.startsWith("window._diff") || p.expression.startsWith("delete window._diff")) {
         return { result: { type: "string", value: "" } };
@@ -4737,7 +4719,7 @@ describe("browser_diff", () => {
       after: fakeBase64B,
     });
 
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
 
     // Should set window._diffBefore
     const beforeCall = evalCalls.find(
@@ -4759,9 +4741,9 @@ describe("browser_diff", () => {
   });
 
   it("should scope comparison to selector when provided", async () => {
-    cdp._setResponse("DOM.getDocument", { root: { nodeId: 1 } });
-    cdp._setResponse("DOM.querySelector", { nodeId: 5 });
-    cdp._setResponse("DOM.getBoxModel", {
+    cdp._setResponse("script.evaluate", { root: { nodeId: 1 } });
+    cdp._setResponse("script.evaluate", { nodeId: 5 });
+    cdp._setResponse("script.evaluate", {
       model: { content: [10, 20, 110, 20, 110, 120, 10, 120] },
     });
 
@@ -4772,19 +4754,19 @@ describe("browser_diff", () => {
     });
 
     // Should have used DOM.querySelector to find the element
-    const queryCalls = cdp._getCalls("DOM.querySelector");
+    const queryCalls = cdp._getCalls("script.evaluate");
     expect(queryCalls.length).toBeGreaterThanOrEqual(1);
     expect((queryCalls[0].params as { selector: string }).selector).toBe("#my-element");
 
     // Should have captured screenshot with clip
-    const screenshotCalls = cdp._getCalls("Page.captureScreenshot");
+    const screenshotCalls = cdp._getCalls("browsingContext.captureScreenshot");
     expect(screenshotCalls.length).toBeGreaterThanOrEqual(1);
     const clipParam = (screenshotCalls[0].params as { clip?: unknown }).clip;
     expect(clipParam).toBeDefined();
   });
 
   it("should throw error when comparison fails with exception", async () => {
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string; awaitPromise?: boolean };
       if (p.expression.startsWith("window._diff") || p.expression.startsWith("delete window._diff")) {
         return { result: { type: "string", value: "" } };
@@ -4812,7 +4794,7 @@ describe("browser_diff", () => {
       after: fakeBase64B,
     });
 
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
     const comparisonCall = evalCalls.find(
       (c) => (c.params as { awaitPromise?: boolean }).awaitPromise === true,
     );
@@ -4853,10 +4835,10 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 
 describe("browser_save_state", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     vi.mocked(writeFileSync).mockReset();
     vi.mocked(readFileSync).mockReset();
     vi.mocked(existsSync).mockReset();
@@ -4870,7 +4852,7 @@ describe("browser_save_state", () => {
       { name: "pref", value: "dark", domain: ".example.com" },
     ];
     cdp._setResponse("Network.getAllCookies", { cookies: mockCookies });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("window.location.href")) {
         return { result: { value: "https://example.com/dashboard" } };
@@ -4894,7 +4876,7 @@ describe("browser_save_state", () => {
   it("should save localStorage entries", async () => {
     const localEntries = [["theme", "dark"], ["lang", "en"]];
     cdp._setResponse("Network.getAllCookies", { cookies: [] });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("window.location.href")) {
         return { result: { value: "https://example.com/" } };
@@ -4917,7 +4899,7 @@ describe("browser_save_state", () => {
   it("should save sessionStorage entries", async () => {
     const sessionEntries = [["cart", "item1"], ["step", "3"]];
     cdp._setResponse("Network.getAllCookies", { cookies: [] });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("window.location.href")) {
         return { result: { value: "https://example.com/" } };
@@ -4939,7 +4921,7 @@ describe("browser_save_state", () => {
 
   it("should save current URL", async () => {
     cdp._setResponse("Network.getAllCookies", { cookies: [] });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("window.location.href")) {
         return { result: { value: "https://app.example.com/settings" } };
@@ -4964,7 +4946,7 @@ describe("browser_save_state", () => {
 
   it("should write state file to ~/.browsirai/states/{name}.json", async () => {
     cdp._setResponse("Network.getAllCookies", { cookies: [] });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("window.location.href")) {
         return { result: { value: "https://example.com/" } };
@@ -4985,7 +4967,7 @@ describe("browser_save_state", () => {
 
   it("should create states directory if not exists", async () => {
     cdp._setResponse("Network.getAllCookies", { cookies: [] });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("window.location.href")) {
         return { result: { value: "https://example.com/" } };
@@ -5004,7 +4986,7 @@ describe("browser_save_state", () => {
 
   it("should overwrite existing state file with same name", async () => {
     cdp._setResponse("Network.getAllCookies", { cookies: [{ name: "a", value: "1" }] });
-    cdp._setResponse("Runtime.evaluate", (params: unknown) => {
+    cdp._setResponse("script.evaluate", (params: unknown) => {
       const p = params as { expression: string };
       if (p.expression.includes("window.location.href")) {
         return { result: { value: "https://example.com/" } };
@@ -5030,7 +5012,7 @@ describe("browser_save_state", () => {
 // ===========================================================================
 
 describe("browser_load_state", () => {
-  let cdp: MockCDP;
+  let cdp: MockBiDi;
 
   const mockStateFile = {
     version: 1,
@@ -5044,7 +5026,7 @@ describe("browser_load_state", () => {
   };
 
   beforeEach(() => {
-    cdp = createMockCDP();
+    cdp = createMockBiDi();
     vi.mocked(writeFileSync).mockReset();
     vi.mocked(readFileSync).mockReset();
     vi.mocked(existsSync).mockReset();
@@ -5073,7 +5055,7 @@ describe("browser_load_state", () => {
 
     expect(result.localStorage).toBe(2);
     // Verify Runtime.evaluate was called with localStorage.setItem expressions
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
     const localStorageCall = evalCalls.find((c) => {
       const p = c.params as { expression: string };
       return p.expression.includes("localStorage.setItem");
@@ -5089,7 +5071,7 @@ describe("browser_load_state", () => {
 
     expect(result.sessionStorage).toBe(1);
     // Verify Runtime.evaluate was called with sessionStorage.setItem expressions
-    const evalCalls = cdp._getCalls("Runtime.evaluate");
+    const evalCalls = cdp._getCalls("script.evaluate");
     const sessionStorageCall = evalCalls.find((c) => {
       const p = c.params as { expression: string };
       return p.expression.includes("sessionStorage.setItem");
@@ -5103,7 +5085,7 @@ describe("browser_load_state", () => {
 
     await browserLoadState(cdp as never, { name: "test-session" });
 
-    const navCalls = cdp._getCalls("Page.navigate");
+    const navCalls = cdp._getCalls("browsingContext.navigate");
     expect(navCalls).toHaveLength(1);
     expect(navCalls[0].params).toEqual({ url: "https://example.com/dashboard" });
   });
@@ -5117,7 +5099,7 @@ describe("browser_load_state", () => {
       url: "https://other.example.com/page",
     });
 
-    const navCalls = cdp._getCalls("Page.navigate");
+    const navCalls = cdp._getCalls("browsingContext.navigate");
     expect(navCalls).toHaveLength(1);
     expect(navCalls[0].params).toEqual({ url: "https://other.example.com/page" });
   });
@@ -5128,7 +5110,7 @@ describe("browser_load_state", () => {
 
     await browserLoadState(cdp as never, { name: "test-session" });
 
-    const reloadCalls = cdp._getCalls("Page.reload");
+    const reloadCalls = cdp._getCalls("browsingContext.reload");
     expect(reloadCalls).toHaveLength(1);
   });
 
