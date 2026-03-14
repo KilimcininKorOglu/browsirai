@@ -1,8 +1,8 @@
 /**
  * browser_navigate_back — navigates back or forward in browser history.
- * Uses Page.getNavigationHistory + Page.navigateToHistoryEntry (session-compatible).
+ * Uses WebDriver BiDi browsingContext.traverseHistory.
  */
-import type { CDPConnection } from "../cdp/connection";
+import type { BiDiConnection } from "../bidi/connection.js";
 
 export interface NavigateBackParams {
   direction?: "back" | "forward";
@@ -14,26 +14,23 @@ export interface NavigateBackResult {
 }
 
 export async function browserNavigateBack(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: NavigateBackParams,
 ): Promise<NavigateBackResult> {
   const direction = params.direction ?? "back";
+  const delta = direction === "back" ? -1 : 1;
 
-  const history = (await cdp.send("Page.getNavigationHistory")) as {
-    currentIndex: number;
-    entries: Array<{ id: number; url: string; title: string }>;
-  };
+  try {
+    await bidi.send("browsingContext.traverseHistory", { delta });
 
-  const targetIndex = direction === "back"
-    ? history.currentIndex - 1
-    : history.currentIndex + 1;
+    const response = (await bidi.send("script.evaluate", {
+      expression: "location.href",
+      awaitPromise: false,
+      resultOwnership: "none",
+    })) as { result: { value?: string } };
 
-  if (targetIndex < 0 || targetIndex >= history.entries.length) {
-    return { success: false, url: history.entries[history.currentIndex]?.url };
+    return { success: true, url: response.result?.value };
+  } catch {
+    return { success: false };
   }
-
-  const entry = history.entries[targetIndex]!;
-  await cdp.send("Page.navigateToHistoryEntry", { entryId: entry.id } as unknown as Record<string, unknown>);
-
-  return { success: true, url: entry.url };
 }

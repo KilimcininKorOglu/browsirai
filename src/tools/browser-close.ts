@@ -1,25 +1,25 @@
 /**
- * browser_close tool — closes browser tabs/targets via CDP.
+ * browser_close tool — closes browser tabs/contexts via BiDi.
  *
  * Supports:
- *  - Close all page targets (closeAll)
- *  - Close a specific target by targetId
+ *  - Close all browsing contexts (closeAll)
+ *  - Close a specific context by targetId
  *  - Close the current active tab (default)
  *
- * Returns the count of closed targets.
+ * Returns the count of closed contexts.
  */
-import type { CDPConnection } from "../cdp/connection";
+import type { BiDiConnection } from "../bidi/connection.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface CloseParams {
-  /** Specific target ID to close. */
+  /** Specific context ID to close. */
   targetId?: string;
   /** Whether to force close (skip beforeunload). */
   force?: boolean;
-  /** Close all page targets. */
+  /** Close all browsing contexts. */
   closeAll?: boolean;
 }
 
@@ -29,85 +29,59 @@ export interface CloseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Types for CDP responses
-// ---------------------------------------------------------------------------
-
-interface TargetInfo {
-  targetId: string;
-  type: string;
-  title: string;
-  url: string;
-  attached?: boolean;
-}
-
-// ---------------------------------------------------------------------------
 // Main implementation
 // ---------------------------------------------------------------------------
 
 /**
- * Closes browser tabs/targets.
- *
- * - closeAll: closes all page-type targets
- * - targetId: closes that specific target
- * - default: closes the current active tab (attached page target, or first page)
- *
- * @param cdp    - CDP connection with send/on/off methods.
- * @param params - Close parameters.
- * @returns Result with success status and count of closed targets.
+ * Closes browser tabs/contexts.
  */
 export async function browserClose(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: CloseParams,
 ): Promise<CloseResult> {
   let closedCount = 0;
 
   if (params.closeAll) {
-    // Close all page targets
-    const targetsResponse = (await cdp.send("Target.getTargets")) as {
-      targetInfos: TargetInfo[];
+    const treeResponse = (await bidi.send("browsingContext.getTree", {})) as {
+      contexts: Array<{ context: string; url: string }>;
     };
 
-    const pageTargets = targetsResponse.targetInfos.filter(
-      (t) => t.type === "page",
-    );
-
-    for (const target of pageTargets) {
+    for (const ctx of treeResponse.contexts) {
       try {
-        await cdp.send("Target.closeTarget", {
-          targetId: target.targetId,
-        } as unknown as Record<string, unknown>);
+        await bidi.send("browsingContext.close", {
+          context: ctx.context,
+          promptUnload: !params.force,
+        });
         closedCount++;
       } catch {
-        // Target may already be closed — ignore
+        // Context may already be closed — ignore
       }
     }
   } else if (params.targetId) {
-    // Close a specific target
-    await cdp.send("Target.closeTarget", {
-      targetId: params.targetId,
-    } as unknown as Record<string, unknown>);
+    await bidi.send("browsingContext.close", {
+      context: params.targetId,
+      promptUnload: !params.force,
+    });
     closedCount = 1;
   } else {
-    // Close the current active tab
-    const targetsResponse = (await cdp.send("Target.getTargets")) as {
-      targetInfos: TargetInfo[];
+    const treeResponse = (await bidi.send("browsingContext.getTree", {})) as {
+      contexts: Array<{ context: string; url: string }>;
     };
 
-    const pageTargets = targetsResponse.targetInfos.filter(
-      (t) => t.type === "page",
+    const contexts = treeResponse.contexts.filter(
+      (ctx) => !ctx.url.startsWith("about:"),
     );
 
-    if (pageTargets.length === 0) {
-      throw new Error("No page targets found to close");
+    if (contexts.length === 0) {
+      throw new Error("No browsing contexts found to close");
     }
 
-    // Find the attached (active) page target, or fall back to the first page
-    const activeTarget =
-      pageTargets.find((t) => t.attached) ?? pageTargets[0];
+    const activeContext = contexts[0]!;
 
-    await cdp.send("Target.closeTarget", {
-      targetId: activeTarget.targetId,
-    } as unknown as Record<string, unknown>);
+    await bidi.send("browsingContext.close", {
+      context: activeContext.context,
+      promptUnload: !params.force,
+    });
     closedCount = 1;
   }
 

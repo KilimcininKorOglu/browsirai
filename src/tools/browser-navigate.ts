@@ -1,15 +1,12 @@
 /**
- * browser_navigate tool — navigates to a URL via CDP Page.navigate.
+ * browser_navigate tool — navigates to a URL via WebDriver BiDi browsingContext.navigate.
  *
  * Handles:
- *  - Cross-document navigation (loaderId present) → waits for load completion
- *    by racing Page.loadEventFired against document.readyState polling
- *  - Same-document navigation (no loaderId, e.g. hash change) → resolves immediately
- *  - Error responses (errorText from CDP)
- *  - Configurable waitUntil strategy
+ *  - Navigation with configurable wait conditions
+ *  - Error responses from BiDi
  *  - Navigation timeout (default 30 s)
  */
-import type { CDPConnection } from "../cdp/connection";
+import type { BiDiConnection } from "../bidi/connection.js";
 
 interface NavigateParams {
   url: string;
@@ -25,18 +22,14 @@ interface NavigateResult {
 const POLL_INTERVAL_MS = 100;
 
 export async function browserNavigate(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: NavigateParams,
 ): Promise<NavigateResult> {
   const { url, timeout = 8 } = params;
   const timeoutMs = timeout * 1000;
 
-  // Enable Page domain events before navigating
-  await cdp.send("Page.enable");
-
-  // Race navigation against a timeout
   const result = await Promise.race([
-    performNavigation(cdp, url, params.waitUntil),
+    performNavigation(bidi, url, params.waitUntil),
     createTimeout(timeoutMs),
   ]);
 
@@ -44,89 +37,74 @@ export async function browserNavigate(
 }
 
 async function performNavigation(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   url: string,
   waitUntil?: string,
 ): Promise<NavigateResult> {
-  const navResponse = (await cdp.send("Page.navigate", { url })) as {
-    frameId?: string;
-    loaderId?: string;
-    errorText?: string;
+  const wait = waitUntil === "domcontentloaded" ? "interactive" : "complete";
+
+  const navResponse = (await bidi.send("browsingContext.navigate", {
+    url,
+    wait,
+  })) as {
+    navigation?: string;
+    url?: string;
   };
 
-  // Check for navigation errors
-  if (navResponse.errorText) {
-    throw new Error(`Navigation failed: ${navResponse.errorText}`);
+  if (!navResponse.navigation && !navResponse.url) {
+    // Same-document navigation (hash change / pushState)
+    return getPageInfo(bidi);
   }
 
-  const hasCrossDocNavigation = Boolean(navResponse.loaderId);
+  // Wait for load if BiDi didn't wait fully
+  await waitForLoadCompletion(bidi, waitUntil);
 
-  if (hasCrossDocNavigation) {
-    // Cross-document navigation: race event listener against readyState polling.
-    // This ensures tests that emit Page.loadEventFired work, AND tests that
-    // only mock Runtime.evaluate to return readyState=complete also work.
-    await waitForLoadCompletion(cdp, waitUntil);
-  }
-  // Same-document navigation (hash change / pushState): no load event needed
-
-  return getPageInfo(cdp);
+  return getPageInfo(bidi);
 }
 
-/**
- * Waits for page load completion by racing two strategies:
- * 1. Listening for the Page.loadEventFired (or domContentEventFired) CDP event
- * 2. Polling document.readyState via Runtime.evaluate
- *
- * Whichever resolves first wins, and the other is cleaned up.
- */
 function waitForLoadCompletion(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   waitUntil?: string,
 ): Promise<void> {
   const eventName =
     waitUntil === "domcontentloaded"
-      ? "Page.domContentEventFired"
-      : "Page.loadEventFired";
+      ? "browsingContext.domContentLoaded"
+      : "browsingContext.load";
 
   return new Promise<void>((resolve) => {
     let settled = false;
 
-    // Strategy 1: CDP event listener
     const handler = () => {
       if (settled) return;
       settled = true;
-      cdp.off(eventName, handler as (params: unknown) => void);
+      bidi.off(eventName, handler as (params: unknown) => void);
       resolve();
     };
-    cdp.on(eventName, handler as (params: unknown) => void);
+    bidi.on(eventName, handler as (params: unknown) => void);
 
-    // Strategy 2: poll readyState
     const poll = async () => {
       while (!settled) {
         try {
-          const response = (await cdp.send("Runtime.evaluate", {
+          const response = (await bidi.send("script.evaluate", {
             expression: "document.readyState",
-            returnByValue: true,
+            awaitPromise: false,
+            resultOwnership: "none",
           })) as { result: { type?: string; value?: string } };
 
-          const readyState = response.result.value;
+          const readyState = response.result?.value;
 
-          // Ready if:
-          // 1. readyState is explicitly "complete"
-          // 2. The response is not a recognized loading state (meaning the
-          //    execution context is alive and document is accessible)
           const isLoadingState =
             readyState === "loading" || readyState === "interactive";
           if (readyState === "complete" || !isLoadingState) {
             if (!settled) {
               settled = true;
-              cdp.off(eventName, handler as (params: unknown) => void);
+              bidi.off(eventName, handler as (params: unknown) => void);
               resolve();
             }
             return;
           }
         } catch {
-          // Runtime.evaluate can fail transiently during navigation — retry
+          // script.evaluate can fail transiently during navigation — retry
         }
 
         if (!settled) {
@@ -139,19 +117,23 @@ function waitForLoadCompletion(
   });
 }
 
-async function getPageInfo(cdp: CDPConnection): Promise<NavigateResult> {
+async function getPageInfo(bidi: BiDiConnection): Promise<NavigateResult> {
   const [titleResponse, urlResponse] = await Promise.all([
-    cdp.send("Runtime.evaluate", {
+    bidi.send("script.evaluate", {
       expression: "document.title",
+      awaitPromise: false,
+      resultOwnership: "none",
     }) as Promise<{ result: { value?: string } }>,
-    cdp.send("Runtime.evaluate", {
+    bidi.send("script.evaluate", {
       expression: "location.href",
+      awaitPromise: false,
+      resultOwnership: "none",
     }) as Promise<{ result: { value?: string } }>,
   ]);
 
   return {
-    title: titleResponse.result.value ?? "",
-    url: urlResponse.result.value ?? "",
+    title: titleResponse.result?.value ?? "",
+    url: urlResponse.result?.value ?? "",
   };
 }
 

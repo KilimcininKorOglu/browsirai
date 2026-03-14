@@ -1,17 +1,17 @@
 /**
- * browser_frames — List all frames in the current page via CDP.
+ * browser_frames — List all frames in the current page via BiDi.
  *
- * Uses Page.getFrameTree to enumerate all frames (main + iframes),
- * including cross-origin detection based on security origins.
+ * Uses browsingContext.getTree to enumerate all contexts (main + iframes),
+ * including cross-origin detection based on URL origins.
  */
-import type { CDPConnection } from "../cdp/connection.js";
+import type { BiDiConnection } from "../bidi/connection.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface FrameInfo {
-  /** CDP frame ID. */
+  /** Browsing context ID. */
   id: string;
   /** URL of the frame. */
   url: string;
@@ -23,50 +23,39 @@ export interface FrameInfo {
   crossOrigin: boolean;
 }
 
-interface FrameTreeNode {
-  frame: {
-    id: string;
-    url: string;
-    name?: string;
-    securityOrigin?: string;
-  };
-  childFrames?: FrameTreeNode[];
+interface BiDiContextNode {
+  context: string;
+  url: string;
+  children: BiDiContextNode[];
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Recursively flattens the frame tree into an array of frame descriptors.
- */
-function flattenFrameTree(
-  node: FrameTreeNode,
+function flattenContextTree(
+  node: BiDiContextNode,
   mainOrigin: string,
 ): FrameInfo[] {
-  const origin = node.frame.securityOrigin ?? extractOrigin(node.frame.url);
+  const origin = extractOrigin(node.url);
   const frames: FrameInfo[] = [
     {
-      id: node.frame.id,
-      url: node.frame.url,
-      name: node.frame.name,
-      securityOrigin: node.frame.securityOrigin,
+      id: node.context,
+      url: node.url,
+      securityOrigin: origin,
       crossOrigin: origin !== mainOrigin,
     },
   ];
 
-  if (node.childFrames) {
-    for (const child of node.childFrames) {
-      frames.push(...flattenFrameTree(child, mainOrigin));
+  if (node.children) {
+    for (const child of node.children) {
+      frames.push(...flattenContextTree(child, mainOrigin));
     }
   }
 
   return frames;
 }
 
-/**
- * Extracts the origin from a URL string.
- */
 function extractOrigin(url: string): string {
   try {
     const parsed = new URL(url);
@@ -82,23 +71,20 @@ function extractOrigin(url: string): string {
 
 /**
  * Lists all frames (main frame and iframes) in the current page.
- *
- * Marks cross-origin frames based on security origin comparison with the main frame.
- * For cross-origin frames, Target.attachToTarget should be used to access content.
- *
- * @param cdp - CDP connection
- * @returns Array of frame info objects
  */
 export async function listFrames(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
 ): Promise<FrameInfo[]> {
-  const response = (await cdp.send("Page.getFrameTree")) as {
-    frameTree: FrameTreeNode;
+  const response = (await bidi.send("browsingContext.getTree", {})) as {
+    contexts: BiDiContextNode[];
   };
 
-  const mainOrigin =
-    response.frameTree.frame.securityOrigin ??
-    extractOrigin(response.frameTree.frame.url);
+  if (response.contexts.length === 0) {
+    return [];
+  }
 
-  return flattenFrameTree(response.frameTree, mainOrigin);
+  const mainContext = response.contexts[0]!;
+  const mainOrigin = extractOrigin(mainContext.url);
+
+  return flattenContextTree(mainContext, mainOrigin);
 }

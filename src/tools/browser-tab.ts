@@ -1,10 +1,9 @@
 /**
- * browser_tab_new / browser_window_new — Create new browser tabs/windows via CDP.
+ * browser_tab_new / browser_window_new — Create new browser tabs/windows via BiDi.
  *
- * Uses Target.createTarget to open new tabs or windows, and
- * Target.activateTarget to bring them to focus.
+ * Uses browsingContext.create to open new tabs or windows.
  */
-import type { CDPConnection } from "../cdp/connection.js";
+import type { BiDiConnection } from "../bidi/connection.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,7 +15,7 @@ export interface TabNewParams {
 }
 
 export interface TabNewResult {
-  /** The target ID of the newly created tab. */
+  /** The context ID of the newly created tab. */
   targetId: string;
 }
 
@@ -26,7 +25,7 @@ export interface WindowNewParams {
 }
 
 export interface WindowNewResult {
-  /** The target ID of the newly created window target. */
+  /** The context ID of the newly created window. */
   targetId: string;
 }
 
@@ -36,49 +35,56 @@ export interface WindowNewResult {
 
 /**
  * Creates a new browser tab and activates it.
- *
- * @param cdp - CDP connection
- * @param params - URL to navigate to (defaults to about:blank)
- * @returns The target ID of the new tab
  */
 export async function browserTabNew(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: TabNewParams,
 ): Promise<TabNewResult> {
   const url = params.url ?? "about:blank";
 
-  const createResult = (await cdp.send("Target.createTarget", {
-    url,
-  })) as { targetId: string };
+  const createResult = (await bidi.send("browsingContext.create", {
+    type: "tab",
+  })) as { context: string };
 
-  await cdp.send("Target.activateTarget", {
-    targetId: createResult.targetId,
+  if (url !== "about:blank") {
+    await bidi.send("browsingContext.navigate", {
+      context: createResult.context,
+      url,
+      wait: "complete",
+    });
+  }
+
+  await bidi.send("browsingContext.activate", {
+    context: createResult.context,
   });
 
-  return { targetId: createResult.targetId };
+  return { targetId: createResult.context };
 }
 
 /**
  * Creates a new browser window and activates it.
- *
- * @param cdp - CDP connection
- * @param params - URL to navigate to (defaults to about:blank)
- * @returns The target ID of the new window target
  */
 export async function browserWindowNew(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: WindowNewParams,
 ): Promise<WindowNewResult> {
   const url = params.url ?? "about:blank";
 
-  const createResult = (await cdp.send("Target.createTarget", {
-    url,
-    newWindow: true,
-  })) as { targetId: string };
+  const createResult = (await bidi.send("browsingContext.create", {
+    type: "window",
+  })) as { context: string };
 
-  await cdp.send("Target.activateTarget", {
-    targetId: createResult.targetId,
+  if (url !== "about:blank") {
+    await bidi.send("browsingContext.navigate", {
+      context: createResult.context,
+      url,
+      wait: "complete",
+    });
+  }
+
+  await bidi.send("browsingContext.activate", {
+    context: createResult.context,
   });
 
-  return { targetId: createResult.targetId };
+  return { targetId: createResult.context };
 }
