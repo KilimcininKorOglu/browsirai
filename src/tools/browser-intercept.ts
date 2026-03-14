@@ -1,28 +1,22 @@
 /**
- * browser_route, browser_abort, browser_unroute tools — CDP Fetch domain request interception.
+ * browser_route, browser_abort, browser_unroute tools — BiDi network interception.
  *
- * Manages shared intercept state:
- *  - Route rules: respond with custom body/status/headers for matching URLs
- *  - Abort rules: block matching requests with BlockedByClient
- *  - Unroute: remove specific or all intercept rules
- *
- * Uses glob pattern matching (** for any path, * for single segment).
+ * Uses network.addIntercept / network.removeIntercept / network.continueRequest
+ * / network.failRequest / network.provideResponse for request interception.
  */
-import type { CDPConnection } from "../cdp/connection";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import type { BiDiConnection } from "../bidi/connection.js";
 
 interface RouteRule {
   urlPattern: string;
   body: string;
   status: number;
   headers: Record<string, string>;
+  interceptId?: string;
 }
 
 interface AbortRule {
   urlPattern: string;
+  interceptId?: string;
 }
 
 export interface RouteParams {
@@ -57,22 +51,10 @@ export interface UnrouteResult {
   remaining: number;
 }
 
-// ---------------------------------------------------------------------------
-// Module-level state
-// ---------------------------------------------------------------------------
-
 const activeRoutes: Map<string, RouteRule> = new Map();
 const activeAborts: Map<string, AbortRule> = new Map();
-let fetchEnabled = false;
 let handlerAttached = false;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Glob matching: convert ** to .* and * to [^/]* for regex matching.
- */
 function matchGlob(pattern: string, url: string): boolean {
   const regex = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -82,80 +64,54 @@ function matchGlob(pattern: string, url: string): boolean {
   return new RegExp(`^${regex}$`).test(url);
 }
 
-/**
- * Sync Fetch domain patterns with CDP.
- * Enables/disables Fetch domain and attaches the requestPaused handler once.
- */
-async function syncFetchPatterns(cdp: CDPConnection): Promise<void> {
-  const patterns = [
-    ...Array.from(activeRoutes.keys()),
-    ...Array.from(activeAborts.keys()),
-  ].map((p) => ({ urlPattern: p }));
-
-  if (patterns.length === 0) {
-    if (fetchEnabled) {
-      await cdp.send("Fetch.disable");
-      fetchEnabled = false;
-    }
-    return;
-  }
-
-  await cdp.send("Fetch.enable", { patterns });
-  fetchEnabled = true;
-
+async function syncInterceptPatterns(bidi: BiDiConnection): Promise<void> {
   // Attach handler once
   if (!handlerAttached) {
-    cdp.on("Fetch.requestPaused", async (params: any) => {
-      const url = params.request.url;
-      const requestId = params.requestId;
+    bidi.on("network.beforeRequestSent", async (params: unknown) => {
+      const p = params as {
+        request: { request: string; url: string };
+        isBlocked?: boolean;
+      };
+
+      if (!p.isBlocked) return;
+
+      const url = p.request.url;
+      const requestId = p.request.request;
 
       try {
-        // Check abort rules first
         for (const [pattern] of activeAborts) {
           if (matchGlob(pattern, url)) {
-            await cdp.send("Fetch.failRequest", {
-              requestId,
-              reason: "BlockedByClient",
-            });
+            await bidi.send("network.failRequest", { request: requestId });
             return;
           }
         }
 
-        // Check route rules
         for (const [pattern, rule] of activeRoutes) {
           if (matchGlob(pattern, url)) {
-            const responseHeaders = Object.entries(rule.headers).map(
-              ([name, value]) => ({ name, value }),
-            );
-            await cdp.send("Fetch.fulfillRequest", {
-              requestId,
-              responseCode: rule.status,
-              body: btoa(rule.body),
-              responseHeaders,
+            await bidi.send("network.provideResponse", {
+              request: requestId,
+              statusCode: rule.status,
+              body: { type: "string", value: rule.body },
+              headers: Object.entries(rule.headers).map(([name, value]) => ({
+                name,
+                value: { type: "string", value },
+              })),
             });
             return;
           }
         }
 
-        // No match: continue request
-        await cdp.send("Fetch.continueRequest", { requestId });
+        await bidi.send("network.continueRequest", { request: requestId });
       } catch {
-        // Request may have been cancelled or navigation occurred — ignore
+        // Request may have been cancelled — ignore
       }
     });
     handlerAttached = true;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tool exports
-// ---------------------------------------------------------------------------
-
-/**
- * Intercept matching requests and respond with a custom body/status/headers.
- */
 export async function browserRoute(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: RouteParams,
 ): Promise<RouteResult> {
   const body =
@@ -166,75 +122,90 @@ export async function browserRoute(
   const status = params.status ?? 200;
   const headers = params.headers ?? { "Content-Type": "application/json" };
 
+  // Add network intercept via BiDi
+  const result = (await bidi.send("network.addIntercept", {
+    phases: ["beforeRequestSent"],
+    urlPatterns: [{ type: "pattern", pattern: params.url }],
+  })) as { intercept: string };
+
   const rule: RouteRule = {
     urlPattern: params.url,
     body,
     status,
     headers,
+    interceptId: result.intercept,
   };
 
   activeRoutes.set(params.url, rule);
-  await syncFetchPatterns(cdp);
+  await syncInterceptPatterns(bidi);
 
-  return {
-    url: params.url,
-    status,
-    activeRoutes: activeRoutes.size,
-  };
+  return { url: params.url, status, activeRoutes: activeRoutes.size };
 }
 
-/**
- * Block matching requests with BlockedByClient error.
- */
 export async function browserAbort(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: AbortParams,
 ): Promise<AbortResult> {
+  const result = (await bidi.send("network.addIntercept", {
+    phases: ["beforeRequestSent"],
+    urlPatterns: [{ type: "pattern", pattern: params.url }],
+  })) as { intercept: string };
+
   const rule: AbortRule = {
     urlPattern: params.url,
+    interceptId: result.intercept,
   };
 
   activeAborts.set(params.url, rule);
-  await syncFetchPatterns(cdp);
+  await syncInterceptPatterns(bidi);
 
-  return {
-    url: params.url,
-    activeAborts: activeAborts.size,
-  };
+  return { url: params.url, activeAborts: activeAborts.size };
 }
 
-/**
- * Remove intercept rules — specific pattern or all.
- */
 export async function browserUnroute(
-  cdp: CDPConnection,
+  bidi: BiDiConnection,
   params: UnrouteParams,
 ): Promise<UnrouteResult> {
   let removed = 0;
 
   if (params.all) {
+    for (const [, rule] of activeRoutes) {
+      if (rule.interceptId) {
+        try { await bidi.send("network.removeIntercept", { intercept: rule.interceptId }); } catch { /* ignore */ }
+      }
+    }
+    for (const [, rule] of activeAborts) {
+      if (rule.interceptId) {
+        try { await bidi.send("network.removeIntercept", { intercept: rule.interceptId }); } catch { /* ignore */ }
+      }
+    }
     removed = activeRoutes.size + activeAborts.size;
     activeRoutes.clear();
     activeAborts.clear();
   } else if (params.url) {
-    if (activeRoutes.delete(params.url)) removed++;
-    if (activeAborts.delete(params.url)) removed++;
+    const routeRule = activeRoutes.get(params.url);
+    if (routeRule) {
+      if (routeRule.interceptId) {
+        try { await bidi.send("network.removeIntercept", { intercept: routeRule.interceptId }); } catch { /* ignore */ }
+      }
+      activeRoutes.delete(params.url);
+      removed++;
+    }
+    const abortRule = activeAborts.get(params.url);
+    if (abortRule) {
+      if (abortRule.interceptId) {
+        try { await bidi.send("network.removeIntercept", { intercept: abortRule.interceptId }); } catch { /* ignore */ }
+      }
+      activeAborts.delete(params.url);
+      removed++;
+    }
   }
 
-  await syncFetchPatterns(cdp);
-
-  return {
-    removed,
-    remaining: activeRoutes.size + activeAborts.size,
-  };
+  return { removed, remaining: activeRoutes.size + activeAborts.size };
 }
 
-/**
- * Reset all intercept state — for testing purposes.
- */
 export function resetInterceptState(): void {
   activeRoutes.clear();
   activeAborts.clear();
-  fetchEnabled = false;
   handlerAttached = false;
 }

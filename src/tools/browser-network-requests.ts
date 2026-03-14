@@ -93,37 +93,37 @@ interface CDPEventSource {
  * Register CDP event listeners for Network.requestWillBeSent and
  * Network.responseReceived. Call once after Network.enable.
  */
-export function setupNetworkCapture(cdp: CDPEventSource): void {
-  cdp.on("Network.requestWillBeSent", (params: unknown) => {
+export function setupNetworkCapture(bidi: CDPEventSource): void {
+  // BiDi network events
+  bidi.on("network.beforeRequestSent", (params: unknown) => {
     const p = params as {
-      requestId: string;
-      request: { url: string; method: string };
-      type?: string;
+      request: { request: string; url: string; method: string };
+      navigation?: string;
       timestamp?: number;
     };
 
     const entry: BufferEntry = {
-      requestId: p.requestId,
+      requestId: p.request.request,
       url: p.request.url,
       method: p.request.method,
-      type: p.type ?? "Other",
-      timestamp: p.timestamp ? Math.floor(p.timestamp * 1000) : Date.now(),
+      type: "Fetch",
+      timestamp: p.timestamp ? Math.floor(p.timestamp) : Date.now(),
     };
 
-    pendingRequests.set(p.requestId, entry);
+    pendingRequests.set(p.request.request, entry);
     networkBuffer.push(entry);
   });
 
-  cdp.on("Network.responseReceived", (params: unknown) => {
+  bidi.on("network.responseCompleted", (params: unknown) => {
     const p = params as {
-      requestId: string;
-      response: { url: string; status: number; headers?: Record<string, string> };
+      request: { request: string };
+      response: { url: string; status: number };
     };
 
-    const entry = pendingRequests.get(p.requestId);
+    const entry = pendingRequests.get(p.request.request);
     if (entry) {
       entry.status = p.response.status;
-      pendingRequests.delete(p.requestId);
+      pendingRequests.delete(p.request.request);
     }
   });
 }

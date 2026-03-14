@@ -64,28 +64,34 @@ interface CDPEventSource {
  * Register a CDP event listener for Runtime.consoleAPICalled.
  * Call once after Runtime.enable.
  */
-export function setupConsoleCapture(cdp: CDPEventSource): void {
-  cdp.on("Runtime.consoleAPICalled", (params: unknown) => {
+export function setupConsoleCapture(bidi: CDPEventSource): void {
+  // BiDi log events
+  bidi.on("log.entryAdded", (params: unknown) => {
     const p = params as {
       type: string;
-      args?: Array<{ type: string; value?: unknown; description?: string }>;
+      level: string;
+      text?: string;
+      args?: Array<{ type: string; value?: unknown }>;
       timestamp?: number;
     };
 
-    if (!SUPPORTED_LEVELS.has(p.type)) return;
+    const level = p.level === "warning" ? "warn" : p.level;
+    if (!SUPPORTED_LEVELS.has(level)) return;
 
-    const text = (p.args ?? [])
-      .map((arg) => {
-        if (arg.type === "string") return String(arg.value);
-        if (arg.type === "undefined") return "undefined";
-        if (arg.value !== undefined) return String(arg.value);
-        if (arg.description) return arg.description;
-        return "";
-      })
-      .join(" ");
+    let text = p.text ?? "";
+    if (!text && p.args) {
+      text = p.args
+        .map((arg) => {
+          if (arg.type === "string") return String(arg.value);
+          if (arg.type === "undefined") return "undefined";
+          if (arg.value !== undefined) return String(arg.value);
+          return "";
+        })
+        .join(" ");
+    }
 
     consoleBuffer.push({
-      level: p.type === "warning" ? "warn" : p.type,
+      level,
       text,
       timestamp: p.timestamp ? Math.floor(p.timestamp) : Date.now(),
     });
