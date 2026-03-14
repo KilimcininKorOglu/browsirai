@@ -31,11 +31,19 @@ function ensureStatesDir(): string {
 }
 function getStatePath(name: string): string { return join(getStatesDir(), `${name}.json`); }
 
+const SAFE_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+function validateStateName(name: string): void {
+  if (!SAFE_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid state name: "${name}". Only alphanumeric characters, hyphens, and underscores are allowed.`);
+  }
+}
+
 export async function browserSaveState(
   bidi: BiDiConnection,
   params: SaveStateParams,
 ): Promise<SaveStateResult> {
   const { name } = params;
+  validateStateName(name);
 
   // Get cookies via BiDi storage module
   let cookies: unknown[] = [];
@@ -93,6 +101,7 @@ export async function browserLoadState(
   params: LoadStateParams,
 ): Promise<LoadStateResult> {
   const { name, url: customUrl } = params;
+  validateStateName(name);
 
   const filePath = getStatePath(name);
   if (!existsSync(filePath)) throw new Error(`State file not found: ${filePath}`);
