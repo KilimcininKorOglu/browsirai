@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "description": "Live browser plugin for AI coding agents. Connect to your running Chrome session via CDP.",
   "author": "Mert Koseoglu",
-  "license": "BSL-1.1",
+  "license": "AGPL-3.0",
   "homepage": "https://github.com/mksglu/browsir.ai#readme",
   "repository": {
     "type": "git",

@@ -1,7 +1,7 @@
 # browsirai
 
 [![npm version](https://img.shields.io/npm/v/browsirai.svg?style=flat-square)](https://www.npmjs.com/package/browsirai)
-[![License: BSL-1.1](https://img.shields.io/badge/license-BSL--1.1-blue?style=flat-square)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 
 **Your browser. Your sessions. Your agent.**
 
@@ -509,4 +509,4 @@ Yes — the LLM sees the same content you'd see in the browser. This is inherent
 
 ## License
 
-BSL-1.1 (Business Source License 1.1) — free for non-commercial use. Converts to Apache-2.0 on March 14, 2030.
+AGPL-3.0 — free to use, modify, and distribute. If you modify and deploy as a network service, you must open-source your changes.
