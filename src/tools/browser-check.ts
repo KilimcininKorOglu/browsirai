@@ -1,143 +1,81 @@
 /**
- * browser_check / browser_uncheck — Idempotent checkbox state management via CDP.
+ * browser_check / browser_uncheck — Idempotent checkbox state management via BiDi.
  *
- * Checks the current state of a checkbox before clicking. If the checkbox is
- * already in the desired state, the operation is a no-op.
+ * Uses script.evaluate to check state and input.performActions to click.
  */
-import type { CDPConnection } from "../cdp/connection.js";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import type { BiDiConnection } from "../bidi/connection.js";
 
 export interface CheckParams {
-  /** CSS selector for the checkbox element. */
   selector?: string;
-  /** @eN reference for the checkbox element. */
   ref?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+async function getCheckedState(bidi: BiDiConnection, params: CheckParams): Promise<boolean> {
+  let expression: string;
 
-/**
- * Resolves the element to a Runtime object and reads its `checked` property.
- */
-async function getCheckedState(
-  cdp: CDPConnection,
-  params: CheckParams,
-): Promise<boolean> {
   if (params.selector) {
-    const response = (await cdp.send("Runtime.evaluate", {
-      expression: `document.querySelector(${JSON.stringify(params.selector)})?.checked ?? false`,
-      returnByValue: true,
-    })) as { result: { type: string; value: unknown } };
-    return response.result.value === true;
+    expression = `document.querySelector(${JSON.stringify(params.selector)})?.checked ?? false`;
+  } else if (params.ref) {
+    expression = `document.querySelector('[data-bidi-ref="${params.ref}"]')?.checked ?? false`;
+  } else {
+    return false;
   }
 
-  if (params.ref) {
-    const backendNodeId = parseRef(params.ref);
-    const resolved = (await cdp.send("DOM.resolveNode", { backendNodeId })) as {
-      object: { objectId: string };
-    };
-    const response = (await cdp.send("Runtime.callFunctionOn", {
-      objectId: resolved.object.objectId,
-      functionDeclaration: "function() { return this.checked; }",
-      returnByValue: true,
-    })) as { result: { type: string; value: unknown } };
-    return response.result.value === true;
-  }
+  const response = (await bidi.send("script.evaluate", {
+    expression,
+    awaitPromise: false,
+    resultOwnership: "none",
+  })) as { result: { value: unknown } };
 
-  return false;
+  return response.result.value === true;
 }
 
-/**
- * Clicks a checkbox element using the standard 3-event mouse sequence.
- *
- * Resolves element coordinates via DOM.getBoxModel and dispatches
- * mouseMoved, mousePressed, and mouseReleased events.
- */
-async function clickElement(
-  cdp: CDPConnection,
-  params: CheckParams,
-): Promise<void> {
-  // Build the identifier for DOM commands
-  const domParams: Record<string, unknown> = {};
-
-  if (params.ref) {
-    domParams.backendNodeId = parseRef(params.ref);
-  } else if (params.selector) {
-    domParams.selector = params.selector;
+async function clickElement(bidi: BiDiConnection, params: CheckParams): Promise<void> {
+  let selector: string;
+  if (params.selector) {
+    selector = params.selector;
+  } else if (params.ref) {
+    selector = `[data-bidi-ref="${params.ref}"]`;
+  } else {
+    throw new Error("Either selector or ref must be provided");
   }
 
-  await cdp.send("DOM.scrollIntoViewIfNeeded", domParams);
+  // Scroll into view and get coordinates
+  const coordResult = (await bidi.send("script.evaluate", {
+    expression: `(function() {
+      var el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return JSON.stringify(null);
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      var rect = el.getBoundingClientRect();
+      return JSON.stringify({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+    })()`,
+    awaitPromise: false,
+    resultOwnership: "none",
+  })) as { result: { value: string } };
 
-  const boxResponse = (await cdp.send("DOM.getBoxModel", domParams)) as {
-    model: { content: number[] };
-  };
-  const content = boxResponse.model.content;
-  const x = (content[0] + content[2] + content[4] + content[6]) / 4;
-  const y = (content[1] + content[3] + content[5] + content[7]) / 4;
+  const coords = JSON.parse(coordResult.result.value);
+  if (!coords) throw new Error(`Element not found: ${selector}`);
 
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseMoved",
-    x,
-    y,
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mousePressed",
-    x,
-    y,
-    button: "left",
-    clickCount: 1,
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseReleased",
-    x,
-    y,
-    button: "left",
-    clickCount: 1,
+  await bidi.send("input.performActions", {
+    actions: [{
+      type: "pointer",
+      id: "mouse",
+      parameters: { pointerType: "mouse" },
+      actions: [
+        { type: "pointerMove", x: Math.round(coords.x), y: Math.round(coords.y) },
+        { type: "pointerDown", button: 0 },
+        { type: "pointerUp", button: 0 },
+      ],
+    }],
   });
 }
 
-/**
- * Parses an @eN reference string to extract the backend node ID.
- */
-function parseRef(ref: string): number {
-  const match = ref.match(/@e(\d+)/);
-  if (!match) {
-    throw new Error(`Invalid ref format: ${ref}`);
-  }
-  return parseInt(match[1], 10);
+export async function browserCheck(bidi: BiDiConnection, params: CheckParams): Promise<void> {
+  const isChecked = await getCheckedState(bidi, params);
+  if (!isChecked) await clickElement(bidi, params);
 }
 
-// ---------------------------------------------------------------------------
-// Exported functions
-// ---------------------------------------------------------------------------
-
-/**
- * Ensures a checkbox is checked. No-op if already checked.
- */
-export async function browserCheck(
-  cdp: CDPConnection,
-  params: CheckParams,
-): Promise<void> {
-  const isChecked = await getCheckedState(cdp, params);
-  if (!isChecked) {
-    await clickElement(cdp, params);
-  }
-}
-
-/**
- * Ensures a checkbox is unchecked. No-op if already unchecked.
- */
-export async function browserUncheck(
-  cdp: CDPConnection,
-  params: CheckParams,
-): Promise<void> {
-  const isChecked = await getCheckedState(cdp, params);
-  if (isChecked) {
-    await clickElement(cdp, params);
-  }
+export async function browserUncheck(bidi: BiDiConnection, params: CheckParams): Promise<void> {
+  const isChecked = await getCheckedState(bidi, params);
+  if (isChecked) await clickElement(bidi, params);
 }
