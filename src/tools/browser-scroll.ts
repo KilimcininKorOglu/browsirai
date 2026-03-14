@@ -27,7 +27,7 @@ export async function browserScroll(
     await bidi.send("script.evaluate", {
       expression: `(() => {
         const el = document.querySelector(${JSON.stringify(selector)});
-        if (!el) throw new Error('Element not found: ${selector}');
+        if (!el) throw new Error('Element not found: ' + ${JSON.stringify(selector)});
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       })()`,
       awaitPromise: false,
@@ -44,7 +44,7 @@ export async function browserScroll(
     await bidi.send("script.evaluate", {
       expression: `(() => {
         const el = document.querySelector(${JSON.stringify(selector)});
-        if (!el) throw new Error('Element not found: ${selector}');
+        if (!el) throw new Error('Element not found: ' + ${JSON.stringify(selector)});
         el.scrollBy(${scrollX}, ${scrollY});
       })()`,
       awaitPromise: false,

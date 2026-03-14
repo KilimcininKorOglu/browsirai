@@ -31,7 +31,7 @@ export async function browserScrollIntoView(
   } else if (params.selector) {
     jsExpression = `(() => {
       const el = document.querySelector(${JSON.stringify(params.selector)});
-      if (!el) throw new Error('Element not found: ${params.selector}');
+      if (!el) throw new Error('Element not found: ' + ${JSON.stringify(params.selector)});
       el.scrollIntoView({ behavior: "instant", block: "center" });
       return true;
     })()`;

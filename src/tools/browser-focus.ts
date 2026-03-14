@@ -16,7 +16,7 @@ export async function browserFocus(
     await bidi.send("script.evaluate", {
       expression: `(() => {
         const el = document.querySelector(${JSON.stringify(params.selector)});
-        if (!el) throw new Error('Element not found: ${params.selector}');
+        if (!el) throw new Error('Element not found: ' + ${JSON.stringify(params.selector)});
         el.focus();
       })()`,
       awaitPromise: false,
