@@ -182,12 +182,12 @@ foxbrowser eval "document.title"
 
 ### Commands (30)
 
-| Category       | Commands                                                                                |
-| -------------- | --------------------------------------------------------------------------------------- |
-| **Navigation** | `open` (goto, navigate), `back`, `scroll`, `wait`, `tab` (tabs), `close`, `resize`     |
-| **Observation** | `snapshot`, `screenshot`, `html`, `eval`, `find`, `source`, `console`, `network`       |
-| **Actions**    | `click`, `fill`, `type`, `press` (key), `hover`, `drag`, `select`, `upload`, `dialog`  |
-| **Network**    | `route`, `abort`, `unroute`, `save`, `load`, `diff`                                    |
+| Category        | Commands                                                                              |
+|-----------------|---------------------------------------------------------------------------------------|
+| **Navigation**  | `open` (goto, navigate), `back`, `scroll`, `wait`, `tab` (tabs), `close`, `resize`    |
+| **Observation** | `snapshot`, `screenshot`, `html`, `eval`, `find`, `source`, `console`, `network`      |
+| **Actions**     | `click`, `fill`, `type`, `press` (key), `hover`, `drag`, `select`, `upload`, `dialog` |
+| **Network**     | `route`, `abort`, `unroute`, `save`, `load`, `diff`                                   |
 
 ### Short Flags
 
@@ -228,84 +228,84 @@ foxbrowser snapshot -i
 
 ## Features
 
-| Feature                 | Description                                                                                                |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **WebDriver BiDi**      | W3C standard protocol. Cross-browser compatible, future-proof.                                             |
-| **Daemon Architecture** | MCP server survives browser crashes. Auto-reconnects on next `browser_connect`.                            |
+| Feature                 | Description                                                                                                 |
+|-------------------------|-------------------------------------------------------------------------------------------------------------|
+| **WebDriver BiDi**      | W3C standard protocol. Cross-browser compatible, future-proof.                                              |
+| **Daemon Architecture** | MCP server survives browser crashes. Auto-reconnects on next `browser_connect`.                             |
 | **Skill Injection**     | On every connect, injects workflow hints, cost hierarchy, and identity resolution rules into agent context. |
-| **EventBuffer Capture** | Server-side BiDi event listeners. Network requests and console messages survive page navigations.          |
-| **Source Inspection**    | Maps DOM elements to source code: React (Fiber tree + jsxDEV), Vue (`__file`), Svelte (`__svelte_meta`).  |
-| **Network Intercept**   | Route, abort, and mock HTTP requests with glob pattern matching via BiDi network module.                   |
-| **Element Refs**        | Accessibility tree nodes get `@eN` refs. Click, fill, hover, drag -- all by ref.                          |
-| **Pixel Diff**          | Compare two screenshots pixel-by-pixel. Returns diff percentage and visual overlay.                        |
-| **Session Persistence** | Save/load cookies, localStorage, sessionStorage across agent sessions.                                     |
-| **Auto-Upgrade**        | Checks npm registry on server start. Background upgrade applies on next restart.                           |
-| **Cost Optimization**   | `browser_screenshot` auto-returns text snapshot (~500 tokens) unless `visual: true` (~10K tokens).         |
+| **EventBuffer Capture** | Server-side BiDi event listeners. Network requests and console messages survive page navigations.           |
+| **Source Inspection**   | Maps DOM elements to source code: React (Fiber tree + jsxDEV), Vue (`__file`), Svelte (`__svelte_meta`).    |
+| **Network Intercept**   | Route, abort, and mock HTTP requests with glob pattern matching via BiDi network module.                    |
+| **Element Refs**        | Accessibility tree nodes get `@eN` refs. Click, fill, hover, drag -- all by ref.                            |
+| **Pixel Diff**          | Compare two screenshots pixel-by-pixel. Returns diff percentage and visual overlay.                         |
+| **Session Persistence** | Save/load cookies, localStorage, sessionStorage across agent sessions.                                      |
+| **Auto-Upgrade**        | Checks npm registry on server start. Background upgrade applies on next restart.                            |
+| **Cost Optimization**   | `browser_screenshot` auto-returns text snapshot (~500 tokens) unless `visual: true` (~10K tokens).          |
 
 ## Tools (33)
 
 ### Connection and Lifecycle
 
-| Tool               | What it does                                                                                  | ~Tokens |
-| ------------------ | --------------------------------------------------------------------------------------------- | ------: |
-| `browser_connect`  | Connect to Firefox via WebDriver BiDi. Auto-launches if needed. Injects agent skill hints.    |       - |
-| `browser_tabs`     | List open tabs, filter by title/URL glob.                                                     |     ~10 |
-| `browser_list`     | List available browser instances on default ports.                                            |     ~10 |
-| `browser_close`    | Close tab(s) or detach. `force: true` to actually close.                                      |       - |
-| `browser_resize`   | Set viewport dimensions or preset (`mobile`, `tablet`, `desktop`, `reset`).                   |     ~10 |
+| Tool              | What it does                                                                               | ~Tokens |
+|-------------------|--------------------------------------------------------------------------------------------|--------:|
+| `browser_connect` | Connect to Firefox via WebDriver BiDi. Auto-launches if needed. Injects agent skill hints. |       - |
+| `browser_tabs`    | List open tabs, filter by title/URL glob.                                                  |     ~10 |
+| `browser_list`    | List available browser instances on default ports.                                         |     ~10 |
+| `browser_close`   | Close tab(s) or detach. `force: true` to actually close.                                   |       - |
+| `browser_resize`  | Set viewport dimensions or preset (`mobile`, `tablet`, `desktop`, `reset`).                |     ~10 |
 
 ### Navigation
 
-| Tool                    | What it does                                                            | ~Tokens |
-| ----------------------- | ----------------------------------------------------------------------- | ------: |
-| `browser_navigate`      | Navigate to URL. `waitUntil`: `load`, `domcontentloaded`, `networkidle`.|    ~500 |
-| `browser_navigate_back` | Go back or forward in history.                                          |    ~500 |
-| `browser_scroll`        | Scroll page/element by direction and pixels, or scroll element into view.|    ~10 |
-| `browser_wait_for`      | Wait for text, selector, URL glob, JS condition, or timeout.            |     ~10 |
+| Tool                    | What it does                                                              | ~Tokens |
+|-------------------------|---------------------------------------------------------------------------|--------:|
+| `browser_navigate`      | Navigate to URL. `waitUntil`: `load`, `domcontentloaded`, `networkidle`.  |    ~500 |
+| `browser_navigate_back` | Go back or forward in history.                                            |    ~500 |
+| `browser_scroll`        | Scroll page/element by direction and pixels, or scroll element into view. |     ~10 |
+| `browser_wait_for`      | Wait for text, selector, URL glob, JS condition, or timeout.              |     ~10 |
 
 ### Observation
 
-| Tool                           | What it does                                                                        | ~Tokens |
-| ------------------------------ | ----------------------------------------------------------------------------------- | ------: |
-| `browser_snapshot`             | Accessibility tree with `@eN` refs. `compact`, `interactive`, `cursor`, `depth` modes.|  ~500 |
-| `browser_screenshot`           | Returns text snapshot by default. `visual: true` for base64 image.                  | ~500/~10K |
-| `browser_annotated_screenshot` | Screenshot with numbered labels on interactive elements.                            |   ~12K |
-| `browser_html`                 | Raw HTML of page or element by selector.                                            |    ~500 |
-| `browser_find`                 | Find elements by ARIA role, name, or text. Returns `@eN` ref.                      |    ~100 |
-| `browser_inspect_source`       | Source file, line, component name. React/Vue/Svelte.                                |    ~100 |
-| `browser_evaluate`             | Run JavaScript in page context. Async supported.                                    |     ~10 |
+| Tool                           | What it does                                                                           |   ~Tokens |
+|--------------------------------|----------------------------------------------------------------------------------------|----------:|
+| `browser_snapshot`             | Accessibility tree with `@eN` refs. `compact`, `interactive`, `cursor`, `depth` modes. |      ~500 |
+| `browser_screenshot`           | Returns text snapshot by default. `visual: true` for base64 image.                     | ~500/~10K |
+| `browser_annotated_screenshot` | Screenshot with numbered labels on interactive elements.                               |      ~12K |
+| `browser_html`                 | Raw HTML of page or element by selector.                                               |      ~500 |
+| `browser_find`                 | Find elements by ARIA role, name, or text. Returns `@eN` ref.                          |      ~100 |
+| `browser_inspect_source`       | Source file, line, component name. React/Vue/Svelte.                                   |      ~100 |
+| `browser_evaluate`             | Run JavaScript in page context. Async supported.                                       |       ~10 |
 
 ### Interaction
 
-| Tool                    | What it does                                                                               | ~Tokens |
-| ----------------------- | ------------------------------------------------------------------------------------------ | ------: |
-| `browser_click`         | Click by `@eN` ref, CSS selector, or x/y coordinates. `newTab` support.                   |     ~10 |
-| `browser_fill_form`     | Clear + type into a field. Handles textbox, checkbox, radio, combobox, slider.             |     ~10 |
-| `browser_type`          | Type text (appends, doesn't clear). `slowly` mode for key-event listeners.                 |     ~10 |
-| `browser_press_key`     | Press key or combination (`Control+c`, `Meta+a`, `Enter`, `Escape`).                      |     ~10 |
-| `browser_hover`         | Hover over element by ref.                                                                 |     ~10 |
-| `browser_drag`          | Drag from one ref to another with synthesized pointer events.                              |     ~10 |
-| `browser_select_option` | Select dropdown options by value or label text.                                            |     ~10 |
-| `browser_file_upload`   | Upload files to a file input by ref.                                                       |     ~10 |
-| `browser_handle_dialog` | Accept/dismiss alert, confirm, prompt. With optional prompt text.                          |     ~10 |
+| Tool                    | What it does                                                                   | ~Tokens |
+|-------------------------|--------------------------------------------------------------------------------|--------:|
+| `browser_click`         | Click by `@eN` ref, CSS selector, or x/y coordinates. `newTab` support.        |     ~10 |
+| `browser_fill_form`     | Clear + type into a field. Handles textbox, checkbox, radio, combobox, slider. |     ~10 |
+| `browser_type`          | Type text (appends, doesn't clear). `slowly` mode for key-event listeners.     |     ~10 |
+| `browser_press_key`     | Press key or combination (`Control+c`, `Meta+a`, `Enter`, `Escape`).           |     ~10 |
+| `browser_hover`         | Hover over element by ref.                                                     |     ~10 |
+| `browser_drag`          | Drag from one ref to another with synthesized pointer events.                  |     ~10 |
+| `browser_select_option` | Select dropdown options by value or label text.                                |     ~10 |
+| `browser_file_upload`   | Upload files to a file input by ref.                                           |     ~10 |
+| `browser_handle_dialog` | Accept/dismiss alert, confirm, prompt. With optional prompt text.              |     ~10 |
 
 ### Network and Debugging
 
-| Tool                       | What it does                                                                            | ~Tokens |
-| -------------------------- | --------------------------------------------------------------------------------------- | ------: |
-| `browser_network_requests` | List captured requests. Filter by URL glob, exclude static resources, include headers.  |    ~100 |
-| `browser_console_messages` | Retrieve console log/warn/error/info messages. Filter by level.                         |    ~100 |
-| `browser_route`            | Intercept requests matching URL glob. Respond with custom body/status/headers.          |     ~10 |
-| `browser_abort`            | Block requests matching URL glob.                                                       |     ~10 |
-| `browser_unroute`          | Remove intercept rules. `all: true` to clear everything.                                |     ~10 |
+| Tool                       | What it does                                                                           | ~Tokens |
+|----------------------------|----------------------------------------------------------------------------------------|--------:|
+| `browser_network_requests` | List captured requests. Filter by URL glob, exclude static resources, include headers. |    ~100 |
+| `browser_console_messages` | Retrieve console log/warn/error/info messages. Filter by level.                        |    ~100 |
+| `browser_route`            | Intercept requests matching URL glob. Respond with custom body/status/headers.         |     ~10 |
+| `browser_abort`            | Block requests matching URL glob.                                                      |     ~10 |
+| `browser_unroute`          | Remove intercept rules. `all: true` to clear everything.                               |     ~10 |
 
 ### State and Persistence
 
-| Tool                 | What it does                                                                           | ~Tokens |
-| -------------------- | -------------------------------------------------------------------------------------- | ------: |
-| `browser_save_state` | Save cookies, localStorage, sessionStorage to named file.                              |     ~10 |
-| `browser_load_state` | Restore saved state. Optionally navigate to URL after loading.                         |     ~10 |
-| `browser_diff`       | Pixel-by-pixel comparison. Returns diff %, pixel counts, visual overlay.               |   ~11K |
+| Tool                 | What it does                                                             | ~Tokens |
+|----------------------|--------------------------------------------------------------------------|--------:|
+| `browser_save_state` | Save cookies, localStorage, sessionStorage to named file.                |     ~10 |
+| `browser_load_state` | Restore saved state. Optionally navigate to URL after loading.           |     ~10 |
+| `browser_diff`       | Pixel-by-pixel comparison. Returns diff %, pixel counts, visual overlay. |    ~11K |
 
 > **~Tokens** = approximate tokens returned to the LLM per call.
 
@@ -345,10 +345,10 @@ browser_screenshot  ~10K tokens    Visual (opt-in)
 
 `browser_screenshot` without `visual: true` auto-returns a text snapshot. The LLM gets the same information at 1/20th the cost.
 
-| Scenario                       | Screenshot-default tool | foxbrowser       |
-| ------------------------------ | ----------------------: | --------------: |
-| 50 interactions/day            |        500K tokens/day  |  25K tokens/day |
-| 20 devs x 22 working days     |       220M tokens/month | 11M tokens/month|
+| Scenario                  | Screenshot-default tool |       foxbrowser |
+|---------------------------|------------------------:|-----------------:|
+| 50 interactions/day       |         500K tokens/day |   25K tokens/day |
+| 20 devs x 22 working days |       220M tokens/month | 11M tokens/month |
 
 ### EventBuffer
 
@@ -409,17 +409,17 @@ Checks Firefox installation, Node.js version, BiDi connectivity, and platform co
 
 ## Supported Platforms
 
-| Platform       | Status |
-| -------------- | ------ |
-| Claude Code    |      Y |
-| Cursor         |      Y |
-| Gemini CLI     |      Y |
-| VS Code Copilot|      Y |
-| Windsurf       |      Y |
-| Cline          |      Y |
-| Zed            |      Y |
-| Continue       |      Y |
-| OpenCode       |      Y |
+| Platform        | Status |
+|-----------------|--------|
+| Claude Code     | Y      |
+| Cursor          | Y      |
+| Gemini CLI      | Y      |
+| VS Code Copilot | Y      |
+| Windsurf        | Y      |
+| Cline           | Y      |
+| Zed             | Y      |
+| Continue        | Y      |
+| OpenCode        | Y      |
 
 ## FAQ
 
