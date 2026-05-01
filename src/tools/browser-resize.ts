@@ -34,12 +34,18 @@ export async function browserResize(
   let height: number;
 
   if (params.preset?.toLowerCase() === "reset") {
-    await bidi.send("script.evaluate", {
-      expression: "window.resizeTo(screen.availWidth, screen.availHeight)",
+    const response = (await bidi.send("script.evaluate", {
+      expression: `(() => {
+        const w = screen.availWidth || 1280;
+        const h = screen.availHeight || 720;
+        window.resizeTo(w, h);
+        return { w: window.outerWidth || w, h: window.outerHeight || h };
+      })()`,
       awaitPromise: false,
       resultOwnership: "none",
-    });
-    return { success: true, width: 0, height: 0 };
+    })) as { result: { value?: { w: number; h: number } } };
+    const size = response.result?.value ?? { w: 1280, h: 720 };
+    return { success: true, width: size.w, height: size.h };
   }
 
   if (params.preset) {

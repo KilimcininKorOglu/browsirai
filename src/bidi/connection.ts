@@ -273,9 +273,9 @@ export class BiDiConnection {
       effectiveParams.target = { context: this.defaultContextId };
     }
 
-    // browsingContext.* commands require a `context` param
+    // browsingContext.* and input.* commands require a `context` param
     if (
-      method.startsWith("browsingContext.") &&
+      (method.startsWith("browsingContext.") || method.startsWith("input.")) &&
       method !== "browsingContext.getTree" &&
       method !== "browsingContext.create" &&
       !effectiveParams.context &&
