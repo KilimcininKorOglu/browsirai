@@ -76,11 +76,12 @@ export interface TargetInfo {
 // ---------------------------------------------------------------------------
 
 /**
- * Discovers a running Firefox instance by querying its HTTP
- * debugging endpoint at /json/version.
+ * Discovers a running Firefox instance by probing the HTTP server
+ * on the remote debugging port.
  *
- * Firefox exposes a similar endpoint to Chrome when launched
- * with `--remote-debugging-port`.
+ * Firefox BiDi does not serve `/json/version` (that is a CDP endpoint).
+ * We probe the root `/` to confirm the httpd is up, then use the
+ * well-known WebSocket endpoint at `/session`.
  */
 export async function discoverBrowser(
   options: DiscoverBrowserOptions = {},
@@ -89,7 +90,7 @@ export async function discoverBrowser(
   const port = options.port ?? 9222;
   const timeout = options.timeout ?? 5000;
 
-  const url = `http://${host}:${port}/json/version`;
+  const url = `http://${host}:${port}/`;
 
   let response: Response;
   try {
@@ -114,41 +115,14 @@ export async function discoverBrowser(
     );
   }
 
-  let data: Record<string, string>;
-  try {
-    data = (await response.json()) as Record<string, string>;
-  } catch {
-    throw new DiscoveryError(
-      "DEBUG_PORT_UNAVAILABLE",
-      `Port ${port} returned invalid JSON. Please relaunch Firefox with --remote-debugging-port=${port}`,
-    );
-  }
+  // Consume the response body to prevent socket hang
+  await response.text();
 
-  const browserField = data["Browser"] ?? "Firefox";
-  const version = extractVersion(browserField);
-
-  let wsUrl = data["webSocketDebuggerUrl"] ?? "";
-  if (wsUrl) {
-    try {
-      const parsed = new URL(wsUrl);
-      parsed.hostname = host;
-      parsed.port = String(port);
-      wsUrl = parsed.toString();
-      if (!data["webSocketDebuggerUrl"]?.endsWith("/") && wsUrl.endsWith("/")) {
-        wsUrl = wsUrl.slice(0, -1);
-      }
-    } catch {
-      // If URL parsing fails, use as-is
-    }
-  }
-
-  if (!wsUrl) {
-    wsUrl = `ws://${host}:${port}/session`;
-  }
+  const wsUrl = `ws://${host}:${port}/session`;
 
   return {
     browser: "Firefox",
-    version,
+    version: "unknown",
     webSocketUrl: wsUrl,
   };
 }

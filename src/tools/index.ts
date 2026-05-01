@@ -724,7 +724,10 @@ function createHandlers(): Record<string, ToolHandler> {
       try {
         const conn = await getBiDi();
         const result = await browserSnapshot(conn, args as any);
-        return textResult(typeof result === "string" ? result : JSON.stringify(result, null, 2));
+        if (typeof result === "string") return textResult(result);
+        const text = result.snapshot || "";
+        const suffix = result.truncated ? `\n\n[Truncated — ${result.totalElements} elements total]` : "";
+        return textResult(text + suffix);
       } catch (e: any) {
         return errorResult(e.message);
       }

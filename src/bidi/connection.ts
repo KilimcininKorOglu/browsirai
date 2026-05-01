@@ -78,6 +78,71 @@ interface MinimalWebSocket {
 }
 
 // ---------------------------------------------------------------------------
+// BiDi serialized value → native JS
+// ---------------------------------------------------------------------------
+
+function deserializeValue(node: unknown): unknown {
+  if (node === null || node === undefined) return node;
+  const n = node as { type?: string; value?: unknown };
+  if (!n.type) return node;
+
+  switch (n.type) {
+    case "string":
+    case "number":
+    case "boolean":
+      return n.value;
+    case "null":
+      return null;
+    case "undefined":
+      return undefined;
+    case "bigint":
+      return BigInt(n.value as string);
+    case "array":
+      return (n.value as unknown[]).map(deserializeValue);
+    case "object":
+      // BiDi serializes objects as [["key", {type, value}], ...]
+      if (Array.isArray(n.value)) {
+        const obj: Record<string, unknown> = {};
+        for (const entry of n.value as [string, unknown][]) {
+          if (Array.isArray(entry) && entry.length === 2) {
+            obj[entry[0] as string] = deserializeValue(entry[1]);
+          }
+        }
+        return obj;
+      }
+      return n.value;
+    default:
+      return n.value;
+  }
+}
+
+/**
+ * Normalize BiDi command results so tools see the same shape
+ * regardless of protocol version.
+ *
+ * For script.evaluate / script.callFunction the BiDi response is:
+ *   { realm, type: "success", result: { type, value } }
+ * Tools expect:
+ *   { result: { type, value } }  where value is a native JS value.
+ */
+function deserializeBiDiResult(
+  raw: unknown,
+  method: string,
+): unknown {
+  if (raw === null || raw === undefined) return raw;
+  const r = raw as Record<string, unknown>;
+
+  if (method === "script.evaluate" || method === "script.callFunction") {
+    const innerResult = r.result as { type?: string; value?: unknown } | undefined;
+    if (innerResult) {
+      return { result: { type: innerResult.type, value: deserializeValue(innerResult) } };
+    }
+  }
+
+  return raw;
+}
+
+// ---------------------------------------------------------------------------
 // BiDiConnection
 // ---------------------------------------------------------------------------
 
@@ -173,6 +238,9 @@ export class BiDiConnection {
 
     this._connected = true;
     this.attachListeners(ws);
+
+    // Firefox BiDi requires an explicit session before any commands work.
+    await this.send("session.new", { capabilities: {} });
   }
 
   /**
@@ -203,6 +271,17 @@ export class BiDiConnection {
       this.defaultContextId
     ) {
       effectiveParams.target = { context: this.defaultContextId };
+    }
+
+    // browsingContext.* commands require a `context` param
+    if (
+      method.startsWith("browsingContext.") &&
+      method !== "browsingContext.getTree" &&
+      method !== "browsingContext.create" &&
+      !effectiveParams.context &&
+      this.defaultContextId
+    ) {
+      effectiveParams.context = this.defaultContextId;
     }
 
     const message: Record<string, unknown> = { id, method, params: effectiveParams };
@@ -288,7 +367,7 @@ export class BiDiConnection {
             const errCode = msg.error?.error ?? "unknown error";
             entry.reject(new Error(`${errCode}: ${errMsg}`));
           } else {
-            entry.resolve(msg.result);
+            entry.resolve(deserializeBiDiResult(msg.result, entry.method));
           }
         }
         return;

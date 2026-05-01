@@ -108,16 +108,8 @@ export class BiDiManager {
       const host = options.host ?? DEFAULT_HOST;
       const port = options.port ?? DEFAULT_PORT;
 
-      const versionUrl = `http://${host}:${port}/json/version`;
-      const response = await fetch(versionUrl);
-      const versionInfo = (await response.json()) as {
-        webSocketDebuggerUrl?: string;
-      };
-
-      wsUrl = versionInfo.webSocketDebuggerUrl;
-      if (!wsUrl) {
-        wsUrl = `ws://${host}:${port}/session`;
-      }
+      // Firefox BiDi WebSocket endpoint is always at /session
+      wsUrl = `ws://${host}:${port}/session`;
     }
 
     this.openWebSocket(wsUrl!);

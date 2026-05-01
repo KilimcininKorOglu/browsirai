@@ -115,11 +115,14 @@ export function isPortReachable(port: number, host = "127.0.0.1"): Promise<boole
 }
 
 /**
- * Verifies Firefox BiDi is truly usable by hitting /json/version.
+ * Verifies Firefox BiDi is truly usable by probing the HTTP server.
+ *
+ * Firefox BiDi does not serve `/json/version` (that is a CDP endpoint).
+ * Instead, we hit the root `/` which returns 200 when the BiDi httpd is up.
  */
 export function isBiDiHealthy(port: number, host = "127.0.0.1"): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://${host}:${port}/json/version`, (res) => {
+    const req = http.get(`http://${host}:${port}/`, (res) => {
       resolve(res.statusCode === 200);
       res.resume();
     });
@@ -222,20 +225,8 @@ export async function quitFirefox(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function getWsEndpoint(port: number): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/json/version`, (res) => {
-      let body = "";
-      res.on("data", (c: Buffer) => { body += c.toString(); });
-      res.on("end", () => {
-        try {
-          const data = JSON.parse(body) as { webSocketDebuggerUrl?: string };
-          resolve(data.webSocketDebuggerUrl ?? `ws://127.0.0.1:${port}/session`);
-        } catch { resolve(`ws://127.0.0.1:${port}/session`); }
-      });
-    });
-    req.setTimeout(3000, () => { req.destroy(); resolve(undefined); });
-    req.on("error", () => resolve(undefined));
-  });
+  // Firefox BiDi WebSocket endpoint is always at /session
+  return `ws://127.0.0.1:${port}/session`;
 }
 
 // ---------------------------------------------------------------------------
