@@ -207,7 +207,7 @@ async function connectBiDi(): Promise<BiDiConnection> {
   const result = await connectFirefox({ autoLaunch: true });
 
   if (!result.success) {
-    const msg = result.error ?? "Could not connect to Firefox via BiDi.";
+    const msg = result.error ?? "Could not connect to browser via BiDi.";
     throw new Error(msg);
   }
 

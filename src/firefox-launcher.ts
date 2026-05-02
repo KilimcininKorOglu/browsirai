@@ -10,7 +10,7 @@
 import { execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import http from "node:http";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { createConnection } from "node:net";
 
@@ -387,7 +387,8 @@ export async function launchFirefoxWithDebugging(
 
   const browserPath = findBrowser(browser);
   if (!browserPath) {
-    return { success: false, port, error: `${browser} not found. Install ${browser} and try again.` };
+    const label = browser.charAt(0).toUpperCase() + browser.slice(1);
+    return { success: false, port, error: `${label} not found. Install ${label} and try again.` };
   }
 
   const usesSeparateInstance = isBrowserRunning(browser);
@@ -442,7 +443,7 @@ export async function launchFirefoxWithDebugging(
   return {
     success: false,
     port: targetPort,
-    error: "Firefox launched but BiDi port not reachable after 15s.",
+    error: `${browser.charAt(0).toUpperCase() + browser.slice(1)} launched but BiDi port not reachable after 15s.`,
   };
 }
 
@@ -464,7 +465,7 @@ export async function launchHeadlessFirefox(): Promise<LaunchResult> {
 
   const browserPath = findBrowser();
   if (!browserPath) {
-    return { success: false, port: HEADLESS_PORT, error: "Firefox not found." };
+    return { success: false, port: HEADLESS_PORT, error: "Browser not found." };
   }
 
   const profileDir = join(tmpdir(), "foxbrowser-firefox-headless");
@@ -490,7 +491,7 @@ export async function launchHeadlessFirefox(): Promise<LaunchResult> {
     }
   }
 
-  return { success: false, port: HEADLESS_PORT, error: "Headless Firefox did not start in 15s." };
+  return { success: false, port: HEADLESS_PORT, error: "Headless browser did not start in 15s." };
 }
 
 // ---------------------------------------------------------------------------
@@ -540,6 +541,6 @@ export async function connectFirefox(options: ConnectOptions = {}): Promise<Conn
   return {
     success: false,
     port: targetPort,
-    error: "Firefox remote debugging is not enabled. Launch Firefox with --remote-debugging-port=9222",
+    error: "Remote debugging is not enabled. Launch browser with --remote-debugging-port=9222",
   };
 }

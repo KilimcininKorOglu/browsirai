@@ -497,7 +497,7 @@ export const schemas: Record<string, z.ZodType> = {
 // ---------------------------------------------------------------------------
 
 const descriptions: Record<string, string> = {
-  browser_connect: "Connect to a running Firefox instance via WebDriver BiDi. Use headless: true to run in background without visible window.",
+  browser_connect: "Connect to a browser (Firefox/Waterfox/LibreWolf/Floorp/Zen) via WebDriver BiDi. Use browser param to select, headless: true for background.",
   browser_tabs: "List open browser tabs, optionally filtered by title or URL",
   browser_snapshot: "Capture an accessibility snapshot of the current page or a specific element. [~500 tokens, PREFERRED for page understanding]",
   browser_screenshot: "Take a screenshot. Auto-returns snapshot text unless visual: true, fullPage: true, or selector is specified. [~10K tokens when image returned]",
@@ -531,7 +531,7 @@ const descriptions: Record<string, string> = {
   browser_load_state: "Load a previously saved browser state (cookies, storage) and optionally navigate to a URL",
   browser_list: "List available browser instances",
   browser_network_request: "Get full details (headers) of a single network request by its 1-based index from browser_network_requests",
-  browser_firefox_info: "Get Firefox browser version, platform, and connection details",
+  browser_firefox_info: "Get browser version, platform, and connection details",
 };
 
 // ---------------------------------------------------------------------------

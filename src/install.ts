@@ -210,7 +210,7 @@ export async function runInstall(): Promise<void> {
 
   if (profiles.length > 0) {
     const profileChoice = await select({
-      message: "Firefox profile to use:",
+      message: `${selectedBrowser.charAt(0).toUpperCase() + selectedBrowser.slice(1)} profile to use:`,
       options: [
         { value: "__none__", label: "None (auto-launch with temporary profile)" },
         ...profiles.map(p => ({
@@ -293,7 +293,8 @@ export async function runInstall(): Promise<void> {
 
   // --- Check/establish BiDi connection (auto-launches Firefox if needed) ---
   const s = spinner();
-  s.start("Connecting to Firefox via WebDriver BiDi...");
+  const browserLabel = selectedBrowser.charAt(0).toUpperCase() + selectedBrowser.slice(1);
+  s.start(`Connecting to ${browserLabel} via WebDriver BiDi...`);
 
   const connection = await connectFirefox({
     autoLaunch: true,
@@ -302,10 +303,10 @@ export async function runInstall(): Promise<void> {
   });
   if (connection.success) {
     s.stop(connection.wsEndpoint
-      ? `Connected to Firefox (port ${connection.port})`
+      ? `Connected to ${browserLabel} (port ${connection.port})`
       : `BiDi reachable on port ${connection.port}`);
   } else {
-    s.stop(connection.error ?? "Could not connect to Firefox");
+    s.stop(connection.error ?? `Could not connect to ${browserLabel}`);
     log.warn("Run `foxbrowser doctor` to diagnose.");
   }
 

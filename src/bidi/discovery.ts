@@ -101,17 +101,17 @@ export async function discoverBrowser(
   } catch {
     throw new DiscoveryError(
       "BROWSER_NOT_FOUND",
-      `No Firefox found on ${host}:${port}. ` +
-        `Ensure Firefox is running with remote debugging enabled: ` +
-        `firefox --remote-debugging-port=${port}`,
+      `No browser found on ${host}:${port}. ` +
+        `Ensure browser is running with remote debugging enabled: ` +
+        `--remote-debugging-port=${port}`,
     );
   }
 
   if (!response.ok) {
     throw new DiscoveryError(
       "DEBUG_PORT_UNAVAILABLE",
-      `Port ${port} is responding but does not appear to be a Firefox debugging endpoint (HTTP ${response.status}). ` +
-        `Please relaunch Firefox with --remote-debugging-port=${port}`,
+      `Port ${port} is responding but does not appear to be a BiDi debugging endpoint (HTTP ${response.status}). ` +
+        `Please relaunch browser with --remote-debugging-port=${port}`,
     );
   }
 
