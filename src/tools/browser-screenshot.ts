@@ -13,6 +13,7 @@ interface ScreenshotParams {
   selector?: string;
   ref?: string;
   annotate?: boolean;
+  saveTo?: string;
 }
 
 interface Annotation {

@@ -32,6 +32,8 @@ export interface NetworkRequestsParams {
 }
 
 export interface NetworkRequest {
+  /** 1-based index for use with browser_network_request. */
+  id: string;
   /** The request URL. */
   url: string;
   /** HTTP method (GET, POST, etc.). */
@@ -70,6 +72,9 @@ interface BufferEntry {
   type: string;
   status?: number;
   timestamp: number;
+  requestHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, string>;
+  responseBody?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,16 +102,24 @@ export function setupNetworkCapture(bidi: CDPEventSource): void {
   // BiDi network events
   bidi.on("network.beforeRequestSent", (params: unknown) => {
     const p = params as {
-      request: { request: string; url: string; method: string };
+      request: { request: string; url: string; method: string; headers?: Array<{ name: string; value: { type: string; value: string } }> };
       navigation?: string;
       timestamp?: number;
     };
+
+    const reqHeaders: Record<string, string> = {};
+    if (Array.isArray(p.request.headers)) {
+      for (const h of p.request.headers) {
+        reqHeaders[h.name] = h.value?.value ?? "";
+      }
+    }
 
     const entry: BufferEntry = {
       requestId: p.request.request,
       url: p.request.url,
       method: p.request.method,
       type: "Fetch",
+      requestHeaders: reqHeaders,
       timestamp: p.timestamp ? Math.floor(p.timestamp) : Date.now(),
     };
 
@@ -117,12 +130,19 @@ export function setupNetworkCapture(bidi: CDPEventSource): void {
   bidi.on("network.responseCompleted", (params: unknown) => {
     const p = params as {
       request: { request: string };
-      response: { url: string; status: number };
+      response: { url: string; status: number; headers?: Array<{ name: string; value: { type: string; value: string } }> };
     };
 
     const entry = pendingRequests.get(p.request.request);
     if (entry) {
       entry.status = p.response.status;
+      if (Array.isArray(p.response.headers)) {
+        const respHeaders: Record<string, string> = {};
+        for (const h of p.response.headers) {
+          respHeaders[h.name] = h.value?.value ?? "";
+        }
+        entry.responseHeaders = respHeaders;
+      }
       pendingRequests.delete(p.request.request);
     }
   });
@@ -169,7 +189,8 @@ export async function browserNetworkRequests(
   entries = entries.slice(0, limit);
 
   // Map to NetworkRequest format — redact secrets from URLs
-  const requests: NetworkRequest[] = entries.map((e) => ({
+  const requests: NetworkRequest[] = entries.map((e, i) => ({
+    id: String(i + 1),
     url: redactInlineSecrets(e.url),
     method: e.method,
     status: e.status,
@@ -177,4 +198,44 @@ export async function browserNetworkRequests(
   }));
 
   return { requests };
+}
+
+// ---------------------------------------------------------------------------
+// Single request detail
+// ---------------------------------------------------------------------------
+
+export interface NetworkRequestDetailParams {
+  index: number;
+}
+
+export interface NetworkRequestDetail {
+  url: string;
+  method: string;
+  status?: number;
+  type: string;
+  requestHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, string>;
+}
+
+export async function browserNetworkRequest(
+  _cdp: unknown,
+  params: NetworkRequestDetailParams,
+): Promise<NetworkRequestDetail> {
+  const entries = networkBuffer.last();
+  const nonStatic = entries.filter((e) => !STATIC_TYPES.has(e.type));
+  const idx = params.index - 1;
+
+  if (idx < 0 || idx >= nonStatic.length) {
+    throw new Error(`Request index ${params.index} out of range (1-${nonStatic.length})`);
+  }
+
+  const entry = nonStatic[idx]!;
+  return {
+    url: redactInlineSecrets(entry.url),
+    method: entry.method,
+    status: entry.status,
+    type: entry.type,
+    requestHeaders: entry.requestHeaders,
+    responseHeaders: entry.responseHeaders,
+  };
 }

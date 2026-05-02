@@ -31,7 +31,7 @@ import { browserWaitFor } from "./browser-wait-for.js";
 import { browserDrag } from "./browser-drag.js";
 import { browserHandleDialog } from "./browser-handle-dialog.js";
 import { browserFileUpload } from "./browser-file-upload.js";
-import { browserNetworkRequests, setupNetworkCapture, resetNetworkBuffer } from "./browser-network-requests.js";
+import { browserNetworkRequests, browserNetworkRequest, setupNetworkCapture, resetNetworkBuffer } from "./browser-network-requests.js";
 import { browserConsoleMessages, setupConsoleCapture, resetConsoleBuffer } from "./browser-console-messages.js";
 import { browserAnnotatedScreenshot } from "./browser-annotated-screenshot.js";
 import { browserInspectSource } from "./browser-inspect-source.js";
@@ -587,6 +587,8 @@ const descriptions: Record<string, string> = {
   browser_save_state: "Save browser state (cookies, localStorage, sessionStorage) to a named file for later restoration",
   browser_load_state: "Load a previously saved browser state (cookies, storage) and optionally navigate to a URL",
   browser_list: "List available browser instances",
+  browser_network_request: "Get full details (headers) of a single network request by its 1-based index from browser_network_requests",
+  browser_firefox_info: "Get Firefox browser version, platform, and connection details",
 };
 
 // ---------------------------------------------------------------------------
@@ -627,6 +629,7 @@ const toolShapes: Record<string, Record<string, z.ZodType>> = {
     quality: cNum.optional(),
     annotate: cBool.optional(),
     visual: cBool.optional(),
+    saveTo: z.string().optional(),
   },
   browser_click: {
     selector: z.string().optional(),
@@ -663,6 +666,8 @@ const toolShapes: Record<string, Record<string, z.ZodType>> = {
   browser_save_state: { name: z.string() },
   browser_load_state: { name: z.string(), url: z.string().optional() },
   browser_list: {},
+  browser_network_request: { index: cNum },
+  browser_firefox_info: {},
 };
 
 // ---------------------------------------------------------------------------
@@ -699,6 +704,18 @@ function createHandlers(): Record<string, ToolHandler> {
         }
         const result = await browserScreenshot(conn, args as any);
         const mimeType = (args.format === "jpeg") ? "image/jpeg" : "image/png";
+
+        if (args.saveTo) {
+          const { writeFileSync, mkdirSync } = await import("node:fs");
+          const { join, basename } = await import("node:path");
+          const outputDir = join(process.cwd(), ".foxbrowser-mcp");
+          mkdirSync(outputDir, { recursive: true });
+          const fileName = basename(args.saveTo as string);
+          const filePath = join(outputDir, fileName);
+          writeFileSync(filePath, Buffer.from(result.base64, "base64"));
+          return textResult(`Screenshot saved to ${filePath}`);
+        }
+
         const content: any[] = [{
           type: "image",
           data: result.base64,
@@ -1131,6 +1148,60 @@ function createHandlers(): Record<string, ToolHandler> {
           `State "${result.name}" restored\n` +
           `Cookies: ${result.cookies}, localStorage: ${result.localStorage}, sessionStorage: ${result.sessionStorage}`
         );
+      } catch (e: any) {
+        return errorResult(e.message);
+      }
+    },
+
+    browser_network_request: async (args) => {
+      try {
+        const conn = await getBiDi();
+        const result = await browserNetworkRequest(conn, args as any);
+        const lines: string[] = [
+          `${result.method} ${result.status ?? "?"} ${result.url}`,
+          `Type: ${result.type}`,
+        ];
+        if (result.requestHeaders) {
+          lines.push("", "Request Headers:");
+          for (const [k, v] of Object.entries(result.requestHeaders)) {
+            lines.push(`  ${k}: ${v}`);
+          }
+        }
+        if (result.responseHeaders) {
+          lines.push("", "Response Headers:");
+          for (const [k, v] of Object.entries(result.responseHeaders)) {
+            lines.push(`  ${k}: ${v}`);
+          }
+        }
+        return textResult(lines.join("\n"));
+      } catch (e: any) {
+        return errorResult(e.message);
+      }
+    },
+
+    browser_firefox_info: async () => {
+      try {
+        const conn = await getBiDi();
+        const status = (await conn.send("session.status", {})) as {
+          ready?: boolean;
+          message?: string;
+        };
+        const tree = (await conn.send("browsingContext.getTree", {})) as {
+          contexts: Array<{ context: string; url: string }>;
+        };
+        const ua = (await conn.send("script.evaluate", {
+          expression: "navigator.userAgent",
+          awaitPromise: false,
+          resultOwnership: "none",
+        })) as { result: { value?: string } };
+
+        const lines: string[] = [
+          `User-Agent: ${ua.result?.value ?? "unknown"}`,
+          `Session Ready: ${status.ready ?? "unknown"}`,
+          `Open Tabs: ${tree.contexts?.length ?? 0}`,
+          `Default Context: ${conn.getDefaultContext() ?? "none"}`,
+        ];
+        return textResult(lines.join("\n"));
       } catch (e: any) {
         return errorResult(e.message);
       }

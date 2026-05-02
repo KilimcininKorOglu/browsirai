@@ -8,4 +8,5 @@ test-*.mjs
 PRD-*.md
 .mcp.json
 .claude/
+.foxbrowser-mcp/
 docs/
