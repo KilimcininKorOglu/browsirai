@@ -575,14 +575,13 @@ describe("browser_fill_form", () => {
     expect(result.success).toBe(true);
     expect(result.filledCount).toBe(1);
 
-    // Should have called script.evaluate for focus+clear and events
+    // Should have called script.evaluate for focus+clear
     const evalCalls = cdp._getCalls("script.evaluate");
-    expect(evalCalls.length).toBeGreaterThanOrEqual(2);
+    expect(evalCalls.length).toBeGreaterThanOrEqual(1);
 
-    // Should have called script.callFunction for insertText
-    const callFnCalls = cdp._getCalls("script.callFunction");
-    expect(callFnCalls).toHaveLength(1);
-    expect((callFnCalls[0].params as { arguments: Array<{ value: string }> }).arguments[0].value).toBe("user@example.com");
+    // Should have called input.performActions for typing
+    const actionCalls = cdp._getCalls("input.performActions");
+    expect(actionCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should fill by @eN ref", async () => {
@@ -649,9 +648,9 @@ describe("browser_fill_form", () => {
       ],
     });
 
-    // Clear should be called (via Runtime.callFunctionOn to set value = '')
-    const clearCalls = cdp._getCalls("script.callFunction");
-    expect(clearCalls.length).toBeGreaterThanOrEqual(1);
+    // Typing should use input.performActions
+    const actionCalls = cdp._getCalls("input.performActions");
+    expect(actionCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should handle multiple fields in one call", async () => {
@@ -813,7 +812,7 @@ describe("browser_type", () => {
     cdp._setResponse("input.performActions", {});
   });
 
-  it("should type text via script.callFunction insertText (fast mode)", async () => {
+  it("should type text via input.performActions batch key events (fast mode)", async () => {
     const result = await browserType(cdp as never, {
       ref: "@e1",
       text: "Hello, world!",
@@ -821,11 +820,12 @@ describe("browser_type", () => {
 
     expect(result.success).toBe(true);
 
-    // Fast mode uses script.callFunction with execCommand
-    const callFnCalls = cdp._getCalls("script.callFunction");
-    expect(callFnCalls).toHaveLength(1);
-    expect((callFnCalls[0].params as { functionDeclaration: string }).functionDeclaration).toContain("insertText");
-    expect((callFnCalls[0].params as { arguments: Array<{ value: string }> }).arguments[0].value).toBe("Hello, world!");
+    // Fast mode sends all key events in a single input.performActions call
+    const actionCalls = cdp._getCalls("input.performActions");
+    expect(actionCalls).toHaveLength(1);
+    const keyActions = (actionCalls[0].params as { actions: Array<{ actions: unknown[] }> }).actions[0].actions;
+    // Each character = keyDown + keyUp = 2 actions, 13 chars = 26 actions
+    expect(keyActions).toHaveLength(26);
   });
 
   it("should type text slowly via key events (slowly=true)", async () => {
@@ -842,16 +842,15 @@ describe("browser_type", () => {
     expect(actionCalls).toHaveLength(3);
   });
 
-  it("should type in focused element (no ref, just insert text)", async () => {
+  it("should type in focused element (no ref, batch key events)", async () => {
     const result = await browserType(cdp as never, {
       text: "typed text",
     });
 
     expect(result.success).toBe(true);
 
-    const callFnCalls = cdp._getCalls("script.callFunction");
-    expect(callFnCalls).toHaveLength(1);
-    expect((callFnCalls[0].params as { arguments: Array<{ value: string }> }).arguments[0].value).toBe("typed text");
+    const actionCalls = cdp._getCalls("input.performActions");
+    expect(actionCalls).toHaveLength(1);
   });
 
   it("should press Enter after typing when submit=true", async () => {
@@ -863,27 +862,21 @@ describe("browser_type", () => {
 
     expect(result.success).toBe(true);
 
-    // submit=true adds an input.performActions call with Enter key
+    // submit=true: first call is text input, second is Enter key
     const actionCalls = cdp._getCalls("input.performActions");
-    expect(actionCalls).toHaveLength(1); // Just the Enter key
-    const keyActions = (actionCalls[0].params as { actions: Array<{ actions: Array<{ type: string; value: string }> }> }).actions[0].actions;
-    expect(keyActions.some(a => a.type === "keyDown" && a.value === "\uE006")).toBe(true);
+    expect(actionCalls).toHaveLength(2);
+    const enterActions = (actionCalls[1].params as { actions: Array<{ actions: Array<{ type: string; value: string }> }> }).actions[0].actions;
+    expect(enterActions.some(a => a.type === "keyDown" && a.value === "\uE006")).toBe(true);
   });
 
-  it("should handle cross-origin iframes via script.callFunction", async () => {
-    // script.callFunction works for insertText even in cross-origin context
-    cdp._setResponse("script.evaluate", () => {
-      throw new Error("Cannot access cross-origin frame");
-    });
-
-    // No ref, so no focus call via script.evaluate
+  it("should type via input.performActions even without ref", async () => {
     const result = await browserType(cdp as never, {
-      text: "cross-origin input",
+      text: "no-ref input",
     });
 
     expect(result.success).toBe(true);
-    const callFnCalls = cdp._getCalls("script.callFunction");
-    expect(callFnCalls).toHaveLength(1);
+    const actionCalls = cdp._getCalls("input.performActions");
+    expect(actionCalls).toHaveLength(1);
   });
 
   it("should focus element before typing when ref is provided", async () => {

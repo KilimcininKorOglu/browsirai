@@ -54,7 +54,6 @@ export async function browserType(
   }
 
   if (params.slowly) {
-    // Slow mode: per-character key actions with delays
     for (let i = 0; i < params.text.length; i++) {
       const char = params.text[i]!;
       await bidi.send("input.performActions", {
@@ -72,12 +71,20 @@ export async function browserType(
       }
     }
   } else {
-    // Fast mode: insert text via execCommand
-    await bidi.send("script.callFunction", {
-      functionDeclaration: `(t) => document.execCommand('insertText', false, t)`,
-      arguments: [{ type: "string", value: params.text }],
-      awaitPromise: false,
-      resultOwnership: "none",
+    // Fast mode: batch key actions without per-character delay
+    const keyActions: unknown[] = [];
+    for (const char of params.text) {
+      keyActions.push(
+        { type: "keyDown", value: char },
+        { type: "keyUp", value: char },
+      );
+    }
+    await bidi.send("input.performActions", {
+      actions: [{
+        type: "key",
+        id: "keyboard",
+        actions: keyActions,
+      }],
     });
   }
 

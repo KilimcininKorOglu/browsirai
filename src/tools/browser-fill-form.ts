@@ -51,8 +51,8 @@ function resolveElementScript(field: FillFormField): string {
 
 async function fillTextbox(bidi: BiDiConnection, field: FillFormField): Promise<void> {
   const elScript = resolveElementScript(field);
-  const escaped = JSON.stringify(field.value);
 
+  // Focus and clear existing value, then select all for overwrite
   await bidi.send("script.evaluate", {
     expression: `(() => {
       const el = ${elScript};
@@ -66,25 +66,20 @@ async function fillTextbox(bidi: BiDiConnection, field: FillFormField): Promise<
     resultOwnership: "none",
   });
 
-  // Insert text via execCommand
-  await bidi.send("script.callFunction", {
-    functionDeclaration: `(t) => document.execCommand('insertText', false, t)`,
-    arguments: [{ type: "string", value: field.value }],
-    awaitPromise: false,
-    resultOwnership: "none",
-  });
-
-  // Dispatch events
-  await bidi.send("script.evaluate", {
-    expression: `(() => {
-      const el = document.activeElement;
-      if (el) {
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    })()`,
-    awaitPromise: false,
-    resultOwnership: "none",
+  // Type via real key events so SPA frameworks detect the input
+  const keyActions: unknown[] = [];
+  for (const char of field.value) {
+    keyActions.push(
+      { type: "keyDown", value: char },
+      { type: "keyUp", value: char },
+    );
+  }
+  await bidi.send("input.performActions", {
+    actions: [{
+      type: "key",
+      id: "keyboard",
+      actions: keyActions,
+    }],
   });
 }
 
