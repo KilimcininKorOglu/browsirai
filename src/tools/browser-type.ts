@@ -1,9 +1,10 @@
 /**
  * browser_type tool — types text into a focused element or an element by ref/selector.
  *
- * Fast mode (default): sends key events in 100-char chunks with 30ms pauses.
- * Slow mode: dispatches individual key actions per character with 50ms delay.
- * submit=true: presses Enter after typing.
+ * Handles multi-line text by splitting into lines and sending Enter between them.
+ * Each line is typed via key events in chunks (max 50 chars per BiDi call).
+ * This ensures compatibility with contenteditable editors (Draft.js, ProseMirror, etc.)
+ * without timeout or state sync issues.
  */
 import type { BiDiConnection } from "../bidi/connection.js";
 
@@ -21,13 +22,51 @@ export interface TypeResult {
 
 const ENTER_KEY = "";
 
-function toKeyValue(char: string): string {
-  if (char === "\n" || char === "\r") return ENTER_KEY;
-  return char;
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendKeys(bidi: BiDiConnection, keys: unknown[]): Promise<void> {
+  await bidi.send("input.performActions", {
+    actions: [{
+      type: "key",
+      id: "keyboard",
+      actions: keys,
+    }],
+  });
+}
+
+async function sendEnter(bidi: BiDiConnection): Promise<void> {
+  await sendKeys(bidi, [
+    { type: "keyDown", value: ENTER_KEY },
+    { type: "keyUp", value: ENTER_KEY },
+  ]);
+}
+
+async function typeLineChunked(bidi: BiDiConnection, line: string): Promise<void> {
+  if (line.length === 0) return;
+  const CHUNK_SIZE = 50;
+  for (let offset = 0; offset < line.length; offset += CHUNK_SIZE) {
+    const chunk = line.slice(offset, offset + CHUNK_SIZE);
+    const keyActions: unknown[] = [];
+    for (const char of chunk) {
+      keyActions.push(
+        { type: "keyDown", value: char },
+        { type: "keyUp", value: char },
+      );
+    }
+    await sendKeys(bidi, keyActions);
+  }
+}
+
+async function typeLineSlowly(bidi: BiDiConnection, line: string): Promise<void> {
+  for (const char of line) {
+    await sendKeys(bidi, [
+      { type: "keyDown", value: char },
+      { type: "keyUp", value: char },
+    ]);
+    await delay(50);
+  }
 }
 
 export async function browserType(
@@ -60,54 +99,25 @@ export async function browserType(
     });
   }
 
-  if (params.slowly) {
-    for (let i = 0; i < params.text.length; i++) {
-      const keyValue = toKeyValue(params.text[i]!);
-      await bidi.send("input.performActions", {
-        actions: [{
-          type: "key",
-          id: "keyboard",
-          actions: [
-            { type: "keyDown", value: keyValue },
-            { type: "keyUp", value: keyValue },
-          ],
-        }],
-      });
-      if (i < params.text.length - 1) {
-        await delay(50);
-      }
+  // Split text into lines and type each separately with Enter between them.
+  // This ensures contenteditable editors (Draft.js, etc.) process each line correctly.
+  const lines = params.text.split("\n");
+  const typeLine = params.slowly ? typeLineSlowly : typeLineChunked;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) {
+      await sendEnter(bidi);
+      await delay(30);
     }
-  } else {
-    // Fast mode: send key actions in chunks to allow framework state sync
-    const CHUNK_SIZE = 100;
-    for (let offset = 0; offset < params.text.length; offset += CHUNK_SIZE) {
-      const chunk = params.text.slice(offset, offset + CHUNK_SIZE);
-      const keyActions: unknown[] = [];
-      for (const char of chunk) {
-        keyActions.push(
-          { type: "keyDown", value: toKeyValue(char) },
-          { type: "keyUp", value: toKeyValue(char) },
-        );
-      }
-      await bidi.send("input.performActions", {
-        actions: [{
-          type: "key",
-          id: "keyboard",
-          actions: keyActions,
-        }],
-      });
-      if (offset + CHUNK_SIZE < params.text.length) {
-        await delay(30);
-      }
-    }
+    await typeLine(bidi, lines[i]!);
   }
 
-  // Verify text was typed — fallback for React-controlled inputs
+  // Verify text was typed — fallback for React-controlled <input>/<textarea>
   const escaped = JSON.stringify(params.text);
   await bidi.send("script.evaluate", {
     expression: `(() => {
       const el = document.activeElement;
-      if (!el || el.value?.includes(${escaped})) return;
+      if (!el || !('value' in el) || el.value?.includes(${escaped})) return;
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
         || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
       if (setter) {
@@ -122,16 +132,7 @@ export async function browserType(
 
   // Submit: press Enter
   if (params.submit) {
-    await bidi.send("input.performActions", {
-      actions: [{
-        type: "key",
-        id: "keyboard",
-        actions: [
-          { type: "keyDown", value: ENTER_KEY },
-          { type: "keyUp", value: ENTER_KEY },
-        ],
-      }],
-    });
+    await sendEnter(bidi);
   }
 
   return { success: true };

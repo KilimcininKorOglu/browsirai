@@ -31,11 +31,20 @@ export interface FillFormResult {
   errors?: FillFormError[];
 }
 
-const ENTER_KEY = "";
+const ENTER_KEY = "";
 
-function toKeyValue(char: string): string {
-  if (char === "\n" || char === "\r") return ENTER_KEY;
-  return char;
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendKeys(bidi: BiDiConnection, keys: unknown[]): Promise<void> {
+  await bidi.send("input.performActions", {
+    actions: [{
+      type: "key",
+      id: "keyboard",
+      actions: keys,
+    }],
+  });
 }
 
 function resolveElementScript(field: FillFormField): string {
@@ -72,42 +81,40 @@ async function fillTextbox(bidi: BiDiConnection, field: FillFormField): Promise<
   });
 
   // Select all existing text with Ctrl+A, then delete with Backspace
-  const ctrlKey = process.platform === "darwin" ? "" : "";
-  await bidi.send("input.performActions", {
-    actions: [{
-      type: "key",
-      id: "keyboard",
-      actions: [
-        { type: "keyDown", value: ctrlKey },
-        { type: "keyDown", value: "a" },
-        { type: "keyUp", value: "a" },
-        { type: "keyUp", value: ctrlKey },
-        { type: "keyDown", value: "" },
-        { type: "keyUp", value: "" },
-      ],
-    }],
-  });
+  const ctrlKey = process.platform === "darwin" ? "" : "";
+  await sendKeys(bidi, [
+    { type: "keyDown", value: ctrlKey },
+    { type: "keyDown", value: "a" },
+    { type: "keyUp", value: "a" },
+    { type: "keyUp", value: ctrlKey },
+    { type: "keyDown", value: "" },
+    { type: "keyUp", value: "" },
+  ]);
 
-  // Type new value via real key events in chunks
-  const CHUNK_SIZE = 100;
-  for (let offset = 0; offset < field.value.length; offset += CHUNK_SIZE) {
-    const chunk = field.value.slice(offset, offset + CHUNK_SIZE);
-    const keyActions: unknown[] = [];
-    for (const char of chunk) {
-      keyActions.push(
-        { type: "keyDown", value: toKeyValue(char) },
-        { type: "keyUp", value: toKeyValue(char) },
-      );
+  // Type value line by line with Enter between lines
+  const lines = field.value.split("\n");
+  const CHUNK_SIZE = 50;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) {
+      await sendKeys(bidi, [
+        { type: "keyDown", value: ENTER_KEY },
+        { type: "keyUp", value: ENTER_KEY },
+      ]);
+      await delay(30);
     }
-    await bidi.send("input.performActions", {
-      actions: [{
-        type: "key",
-        id: "keyboard",
-        actions: keyActions,
-      }],
-    });
-    if (offset + CHUNK_SIZE < field.value.length) {
-      await new Promise((resolve) => setTimeout(resolve, 30));
+    const line = lines[i]!;
+    if (line.length === 0) continue;
+    for (let offset = 0; offset < line.length; offset += CHUNK_SIZE) {
+      const chunk = line.slice(offset, offset + CHUNK_SIZE);
+      const keyActions: unknown[] = [];
+      for (const char of chunk) {
+        keyActions.push(
+          { type: "keyDown", value: char },
+          { type: "keyUp", value: char },
+        );
+      }
+      await sendKeys(bidi, keyActions);
     }
   }
 
@@ -116,7 +123,7 @@ async function fillTextbox(bidi: BiDiConnection, field: FillFormField): Promise<
   await bidi.send("script.evaluate", {
     expression: `(() => {
       const el = document.activeElement;
-      if (!el || el.value === ${escaped}) return;
+      if (!el || !('value' in el) || el.value === ${escaped}) return;
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
         || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
       if (setter) {
