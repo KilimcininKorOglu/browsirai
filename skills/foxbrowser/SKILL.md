@@ -1,15 +1,15 @@
 ---
 name: foxbrowser
-description: Control your live Firefox browser session via MCP tools. Navigate, click, fill forms, take screenshots, read accessibility trees, inspect source code locations, intercept network requests, and automate browser interactions.
+description: Control your live Firefox (or Waterfox, LibreWolf, Floorp, Zen Browser) session via MCP tools. Navigate, click, fill forms, take screenshots, read accessibility trees, inspect source code locations, intercept network requests, and automate browser interactions.
 ---
 
 # foxbrowser
 
-MCP server that connects AI coding agents to a running Firefox browser via WebDriver BiDi. Interact with your live session -- logged-in state, cookies, and all open tabs.
+MCP server that connects AI coding agents to Firefox and Gecko-based browsers via WebDriver BiDi. Interact with your live session -- logged-in state, cookies, and all open tabs.
 
 ## Prerequisites
 
-- Firefox (stable, Developer Edition, or Nightly)
+- Firefox, Waterfox, LibreWolf, Floorp, or Zen Browser
 - Node.js 22+
 
 ### Firefox Connection
@@ -35,6 +35,9 @@ If the profile is locked by your running Firefox, foxbrowser automatically copie
 ```bash
 # Connect to Firefox via BiDi (auto-launches if needed)
 browser_connect
+
+# Connect to a Firefox fork
+browser_connect { "browser": "librewolf" }
 
 # Connect in headless mode
 browser_connect { "headless": true }
@@ -548,7 +551,8 @@ Connect to Firefox via WebDriver BiDi.
 ```
 browser_connect
 browser_connect { "headless": true }
-browser_connect { "profilePath": "/path/to/firefox/profile" }
+browser_connect { "browser": "librewolf" }
+browser_connect { "profilePath": "/path/to/profile" }
 browser_connect { "acceptInsecureCerts": true }
 ```
 
@@ -557,7 +561,8 @@ browser_connect { "acceptInsecureCerts": true }
 | `port`               | number  | 9222          | Debug port                                          |
 | `host`               | string  | `"127.0.0.1"` | Host address                                       |
 | `headless`           | boolean | false         | Launch in headless mode                             |
-| `profilePath`        | string  | -             | Firefox profile directory (auto-copies if locked)   |
+| `browser`            | string  | `"firefox"`   | Browser: `firefox`, `waterfox`, `librewolf`, `floorp`, `zen` |
+| `profilePath`        | string  | -             | Profile directory (auto-copies if locked)           |
 | `acceptInsecureCerts`| boolean | false         | Accept self-signed TLS certificates                 |
 
 When `profilePath` points to a profile locked by a running Firefox, foxbrowser automatically copies the essential files (cookies, logins, certificates) to a temp directory and launches with the copy. Your personal Firefox stays open.

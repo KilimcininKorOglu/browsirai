@@ -5,7 +5,7 @@
 
 **Your browser. Your sessions. Your agent.**
 
-An MCP server + CLI that connects AI coding agents to Firefox via WebDriver BiDi. Use as an MCP server for LLM-driven automation, or as a standalone CLI for direct browser control from the terminal.
+An MCP server + CLI that connects AI coding agents to Firefox and Gecko-based browsers (Waterfox, LibreWolf, Floorp, Zen Browser) via WebDriver BiDi. Use as an MCP server for LLM-driven automation, or as a standalone CLI for direct browser control from the terminal.
 
 ## Why foxbrowser?
 
@@ -15,7 +15,9 @@ An MCP server + CLI that connects AI coding agents to Firefox via WebDriver BiDi
 
 - **Use your real browser sessions** — Automatically copies your Firefox profile (cookies, logins, certificates) even while your personal Firefox is running. No manual setup, no browser restart.
 
-- **No extra browser to install** — Uses your existing Firefox installation. No separate binary downloads.
+- **Works with Firefox forks** — Supports Waterfox, LibreWolf, Floorp, and Zen Browser out of the box. Same tools, same workflow.
+
+- **No extra browser to install** — Uses your existing Firefox or fork installation. No separate binary downloads.
 
 - **20x cheaper than screenshot-default tools** — Server-side snapshot redirection returns ~500 tokens instead of ~10K per interaction. 50 interactions/day: 25K tokens vs 500K.
 
@@ -233,6 +235,7 @@ foxbrowser snapshot -i
 | Feature                 | Description                                                                                                 |
 |-------------------------|-------------------------------------------------------------------------------------------------------------|
 | **WebDriver BiDi**      | W3C standard protocol. Cross-browser compatible, future-proof.                                              |
+| **Firefox Forks**       | Waterfox, LibreWolf, Floorp, Zen Browser. One config: `browser: "librewolf"`.                               |
 | **Daemon Architecture** | MCP server survives browser crashes. Auto-reconnects on next `browser_connect`.                             |
 | **Profile Copy**        | Auto-copies locked Firefox profiles. Access your logins/cookies without closing your personal browser.      |
 | **Skill Injection**     | On every connect, injects workflow hints, cost hierarchy, and identity resolution rules into agent context. |
@@ -399,8 +402,9 @@ foxbrowser can be configured through environment variables, a JSON config file, 
 |-------------------------|---------------------------------------|-------------|
 | `FIREFOX_DEBUG_PORT`    | Remote debugging port                 | `9222`      |
 | `FOXBROWSER_HOST`       | Debug host address                    | `127.0.0.1` |
-| `FOXBROWSER_HEADLESS`   | Launch Firefox in headless mode       | `false`     |
-| `FOXBROWSER_PROFILE`    | Path to Firefox profile directory     | (auto)      |
+| `FOXBROWSER_HEADLESS`   | Launch browser in headless mode       | `false`     |
+| `FOXBROWSER_BROWSER`    | Browser to use                        | `firefox`   |
+| `FOXBROWSER_PROFILE`    | Path to browser profile directory     | (auto)      |
 | `FOXBROWSER_CONFIG`     | Path to config file                   | (see below) |
 | `ACCEPT_INSECURE_CERTS` | Accept self-signed TLS certificates   | `false`     |
 
@@ -413,7 +417,8 @@ Default path: `~/.foxbrowser/config.json`
   "firefox": {
     "port": 9222,
     "host": "127.0.0.1",
-    "profilePath": "/path/to/firefox/profile",
+    "browser": "firefox",             // firefox, waterfox, librewolf, floorp, zen
+    "profilePath": "/path/to/profile",
     "firefoxArgs": ["--safe-mode"],   // config file only, not exposed via MCP API
     "acceptInsecureCerts": false
   },
@@ -443,7 +448,8 @@ Environment variables can be passed via your MCP config:
       "command": "npx",
       "args": ["-y", "foxbrowser"],
       "env": {
-        "FOXBROWSER_PROFILE": "/path/to/firefox/profile",
+        "FOXBROWSER_BROWSER": "firefox",
+        "FOXBROWSER_PROFILE": "/path/to/profile",
         "ACCEPT_INSECURE_CERTS": "true"
       }
     }
@@ -508,6 +514,8 @@ Checks Firefox installation, Node.js version, BiDi connectivity, and platform co
 
 ## Supported Platforms
 
+### AI Platforms
+
 | Platform        | Auto-detect | Config format |
 |-----------------|-------------|---------------|
 | Claude Code     | Yes         | JSON          |
@@ -519,6 +527,18 @@ Checks Firefox installation, Node.js version, BiDi connectivity, and platform co
 | OpenCode        | Yes         | JSON          |
 | Cline           | Manual      | JSON          |
 | Continue        | Manual      | YAML          |
+
+### Browsers
+
+| Browser       | macOS | Linux | Windows | BiDi |
+|---------------|-------|-------|---------|------|
+| Firefox       | Yes   | Yes   | Yes     | Yes  |
+| Waterfox      | Yes   | Yes   | Yes     | Yes  |
+| LibreWolf     | Yes   | Yes   | Yes     | Yes  |
+| Floorp        | Yes   | Yes   | Yes     | Yes  |
+| Zen Browser   | Yes   | Yes   | Yes     | Yes  |
+| Tor Browser   | -     | -     | -       | No   |
+| Mullvad       | -     | -     | -       | No   |
 
 ## FAQ
 
