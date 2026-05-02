@@ -12,22 +12,15 @@ MCP server that connects AI coding agents to a running Firefox browser via WebDr
 - Firefox (stable, Developer Edition, or Nightly)
 - Node.js 22+
 
-### Enable Remote Debugging
+### Firefox Connection
 
-Launch Firefox with the remote debugging flag:
+foxbrowser auto-launches Firefox with remote debugging if not already running. To use your existing logged-in sessions, pass your profile path:
 
-```bash
-# macOS
-/Applications/Firefox.app/Contents/MacOS/firefox --remote-debugging-port=9222
-
-# Linux
-firefox --remote-debugging-port=9222
-
-# Windows
-"C:\Program Files\Mozilla Firefox\firefox.exe" --remote-debugging-port=9222
+```
+browser_connect { "profilePath": "/path/to/firefox/profile" }
 ```
 
-foxbrowser auto-launches Firefox with remote debugging if not already running.
+If the profile is locked by your running Firefox, foxbrowser automatically copies cookies and logins to a temp directory -- your personal Firefox stays untouched.
 
 ### Process Safety
 
@@ -164,15 +157,17 @@ browser_screenshot
 browser_screenshot { "fullPage": true }
 browser_screenshot { "selector": "#hero-section" }
 browser_screenshot { "format": "jpeg", "quality": 80 }
+browser_screenshot { "visual": true, "saveTo": "page.png" }
 ```
 
-| Param      | Type                   | Default | Description                                 |
-| ---------- | ---------------------- | ------- | ------------------------------------------- |
-| `selector` | string                 | -       | CSS selector to screenshot a specific element |
-| `fullPage` | boolean                | false   | Capture full scrollable page                |
-| `format`   | `"png"` \| `"jpeg"` | `"png"` | Image format                                |
-| `quality`  | number                 | -       | JPEG quality (0-100)                        |
-| `visual`   | boolean                | false   | Force returning the actual image            |
+| Param      | Type                   | Default | Description                                          |
+| ---------- | ---------------------- | ------- | ---------------------------------------------------- |
+| `selector` | string                 | -       | CSS selector to screenshot a specific element        |
+| `fullPage` | boolean                | false   | Capture full scrollable page                         |
+| `format`   | `"png"` \| `"jpeg"` | `"png"` | Image format                                         |
+| `quality`  | number                 | -       | JPEG quality (0-100)                                 |
+| `visual`   | boolean                | false   | Force returning the actual image                     |
+| `saveTo`   | string                 | -       | Save to `.foxbrowser-mcp/` dir instead of returning  |
 
 #### `browser_html`
 
@@ -231,6 +226,31 @@ browser_network_requests { "includeHeaders": true, "includeStatic": false }
 | `limit`          | number  | -       | Maximum requests to return           |
 | `includeHeaders` | boolean | false   | Include request/response headers     |
 | `includeStatic`  | boolean | true    | Include static resources (JS, CSS, images) |
+
+#### `browser_network_request`
+
+Get full details (headers) of a single network request by its 1-based index from `browser_network_requests`.
+
+```
+browser_network_request { "index": 1 }
+browser_network_request { "index": 3 }
+```
+
+| Param   | Type   | Description                                  |
+| ------- | ------ | -------------------------------------------- |
+| `index` | number | 1-based index from browser_network_requests  |
+
+Returns method, status, URL, request headers, and response headers. Sensitive headers are automatically redacted.
+
+#### `browser_firefox_info`
+
+Get Firefox browser version, user-agent, session status, and open tab count.
+
+```
+browser_firefox_info
+```
+
+No parameters. Returns connection and browser details.
 
 #### `browser_annotated_screenshot`
 
@@ -528,14 +548,19 @@ Connect to Firefox via WebDriver BiDi.
 ```
 browser_connect
 browser_connect { "headless": true }
-browser_connect { "port": 9222 }
+browser_connect { "profilePath": "/path/to/firefox/profile" }
+browser_connect { "acceptInsecureCerts": true }
 ```
 
-| Param      | Type    | Default       | Description                |
-| ---------- | ------- | ------------- | -------------------------- |
-| `port`     | number  | 9222          | Debug port                 |
-| `host`     | string  | `"127.0.0.1"` | Host address              |
-| `headless` | boolean | false         | Launch in headless mode    |
+| Param                | Type    | Default       | Description                                         |
+| -------------------- | ------- | ------------- | --------------------------------------------------- |
+| `port`               | number  | 9222          | Debug port                                          |
+| `host`               | string  | `"127.0.0.1"` | Host address                                       |
+| `headless`           | boolean | false         | Launch in headless mode                             |
+| `profilePath`        | string  | -             | Firefox profile directory (auto-copies if locked)   |
+| `acceptInsecureCerts`| boolean | false         | Accept self-signed TLS certificates                 |
+
+When `profilePath` points to a profile locked by a running Firefox, foxbrowser automatically copies the essential files (cookies, logins, certificates) to a temp directory and launches with the copy. Your personal Firefox stays open.
 
 #### `browser_list`
 
@@ -598,11 +623,13 @@ browser_evaluate { "expression": "await fetch('/api/status').then(r => r.json())
 
 Network requests are automatically redacted to prevent secret leakage:
 
-- **Headers**: Authorization, Cookie, Set-Cookie, X-API-Key, X-Auth-Token, X-CSRF-Token, Proxy-Authorization, and other auth-related headers are replaced with `[REDACTED]`
-- **URL query parameters**: Sensitive parameters (token, api_key, access_token, etc.) are redacted in URLs
-- **Body fields**: password, secret, token, api_key, apiKey, access_token, refresh_token, client_secret, private_key are redacted in JSON bodies
-- **Non-JSON bodies**: JWTs and Bearer tokens are detected and redacted in plain text, XML, and form-encoded bodies
+- **Headers**: Authorization, Cookie, Set-Cookie, X-API-Key, X-Auth-Token, X-CSRF-Token, Proxy-Authorization, X-AMZ-Security-Token, X-GitHub-Token, and other auth-related headers are replaced with `[REDACTED]`
+- **URL query parameters**: Sensitive parameters (token, api_key, access_token, code, id_token, assertion, etc.) are redacted in URLs
+- **Body fields**: password, secret, token, api_key, access_token, refresh_token, client_secret, private_key are redacted in JSON bodies (case-insensitive matching)
+- **Vendor API keys**: OpenAI/Anthropic (`sk-`), GitHub (`ghp_`, `ghs_`, `github_pat_`), AWS (`AKIA`), Slack (`xoxb-`, `xoxp-`), Google OAuth (`ya29.`) are detected and redacted
 - **Inline secrets**: JWTs (`eyJ...`) are replaced with `[REDACTED_JWT]`, Bearer tokens with `Bearer [REDACTED]`
+- **File permissions**: Session state files are written with `0o600` (owner-only) permissions
+- **Path privacy**: Filesystem paths are never exposed in tool responses
 
 ## Tips
 
@@ -615,6 +642,9 @@ Network requests are automatically redacted to prevent secret leakage:
 - Use `browser_find` to locate elements by role or name when you know what to look for.
 - Use `browser_route` / `browser_abort` to mock or block API calls during testing.
 - Use `browser_save_state` / `browser_load_state` to persist login sessions across runs.
+- Use `browser_network_request { "index": N }` to inspect request/response headers for a specific request.
+- Use `browser_screenshot { "saveTo": "name.png" }` to save to disk instead of consuming context tokens.
+- Use `browser_connect { "profilePath": "..." }` to access your existing Firefox logins and cookies.
 
 ## Common Patterns
 
