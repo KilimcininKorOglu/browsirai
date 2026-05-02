@@ -12,31 +12,31 @@ MCP server that connects AI coding agents to Firefox and Gecko-based browsers vi
 - Firefox, Waterfox, LibreWolf, Floorp, or Zen Browser
 - Node.js 22+
 
-### Firefox Connection
+### Browser Connection
 
-foxbrowser auto-launches Firefox with remote debugging if not already running. To use your existing logged-in sessions, pass your profile path:
+foxbrowser auto-launches the browser with remote debugging if not already running. To use your existing logged-in sessions, pass your profile path:
 
 ```
 browser_connect { "profilePath": "/path/to/firefox/profile" }
 ```
 
-If the profile is locked by your running Firefox, foxbrowser automatically copies cookies and logins to a temp directory -- your personal Firefox stays untouched.
+If the profile is locked by your running browser, foxbrowser automatically copies cookies and logins to a temp directory -- your personal browser stays untouched.
 
 ### Process Safety
 
-**Never** close or kill the user's Firefox processes:
+**Never** close or kill the user's browser processes:
 
-- **Never** use `pkill firefox`, `killall firefox`, `taskkill`, or any process-killing command
+- **Never** use `pkill`, `killall`, `taskkill`, or any process-killing command on browser processes
 - This would destroy the user's personal browser session, open tabs, and unsaved work
 - To close foxbrowser's own tabs, use `browser_close { "force": true }`
 
 ## Quick Start
 
 ```bash
-# Connect to Firefox via BiDi (auto-launches if needed)
+# Connect to browser via BiDi (auto-launches if needed)
 browser_connect
 
-# Connect to a Firefox fork
+# Connect to a different browser
 browser_connect { "browser": "librewolf" }
 
 # Connect in headless mode
@@ -247,7 +247,7 @@ Returns method, status, URL, request headers, and response headers. Sensitive he
 
 #### `browser_firefox_info`
 
-Get Firefox browser version, user-agent, session status, and open tab count.
+Get browser version, user-agent, session status, and open tab count.
 
 ```
 browser_firefox_info
@@ -546,7 +546,7 @@ browser_load_state { "name": "logged-in", "url": "https://app.example.com" }
 
 #### `browser_connect`
 
-Connect to Firefox via WebDriver BiDi.
+Connect to browser via WebDriver BiDi.
 
 ```
 browser_connect
@@ -565,7 +565,7 @@ browser_connect { "acceptInsecureCerts": true }
 | `profilePath`        | string  | -             | Profile directory (auto-copies if locked)           |
 | `acceptInsecureCerts`| boolean | false         | Accept self-signed TLS certificates                 |
 
-When `profilePath` points to a profile locked by a running Firefox, foxbrowser automatically copies the essential files (cookies, logins, certificates) to a temp directory and launches with the copy. Your personal Firefox stays open.
+When `profilePath` points to a profile locked by a running browser, foxbrowser automatically copies the essential files (cookies, logins, certificates) to a temp directory and launches with the copy. Your personal browser stays open.
 
 #### `browser_list`
 
@@ -577,7 +577,7 @@ browser_list
 
 #### `browser_close`
 
-Close browser tabs. When `closeAll` is used, the foxbrowser-launched Firefox process is also terminated.
+Close browser tabs. When `closeAll` is used, the foxbrowser-launched browser process is also terminated.
 
 ```
 browser_close
@@ -589,7 +589,7 @@ browser_close { "force": true, "closeAll": true }
 | ---------- | ------- | ------- | ---------------------------- |
 | `force`    | boolean | false   | Actually close tab(s)        |
 | `targetId` | string  | -       | Specific tab to close        |
-| `closeAll` | boolean | false   | Close all tabs + Firefox     |
+| `closeAll` | boolean | false   | Close all tabs + browser     |
 
 #### `browser_resize`
 
@@ -649,7 +649,7 @@ Network requests are automatically redacted to prevent secret leakage:
 - Use `browser_save_state` / `browser_load_state` to persist login sessions across runs.
 - Use `browser_network_request { "index": N }` to inspect request/response headers for a specific request.
 - Use `browser_screenshot { "saveTo": "name.png" }` to save to disk instead of consuming context tokens.
-- Use `browser_connect { "profilePath": "..." }` to access your existing Firefox logins and cookies.
+- Use `browser_connect { "profilePath": "..." }` to access your existing browser logins and cookies.
 
 ## Common Patterns
 
