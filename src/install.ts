@@ -203,10 +203,24 @@ export async function runInstall(): Promise<void> {
   }
 
   const selectedBrowser = browserChoice as string;
+  const browserLabel = selectedBrowser.charAt(0).toUpperCase() + selectedBrowser.slice(1);
+
+  // Check if selected browser is installed
+  const { findBrowser } = await import("./firefox-launcher.js");
+  const browserPath = findBrowser(selectedBrowser);
+  if (!browserPath) {
+    log.warn(`${browserLabel} not found on this system. Install it first, then re-run the installer.`);
+  } else {
+    log.info(`${browserLabel} found at ${browserPath}`);
+  }
 
   // Browser profile selection
   const profiles = parseBrowserProfiles(selectedBrowser);
   let selectedProfilePath: string | undefined;
+
+  if (profiles.length === 0) {
+    log.info(`No ${browserLabel} profiles found. A temporary profile will be used.`);
+  }
 
   if (profiles.length > 0) {
     const profileChoice = await select({
@@ -291,9 +305,8 @@ export async function runInstall(): Promise<void> {
 
   log.success(`Config written to ${filePath}`);
 
-  // --- Check/establish BiDi connection (auto-launches Firefox if needed) ---
+  // --- Check/establish BiDi connection ---
   const s = spinner();
-  const browserLabel = selectedBrowser.charAt(0).toUpperCase() + selectedBrowser.slice(1);
   s.start(`Connecting to ${browserLabel} via WebDriver BiDi...`);
 
   const connection = await connectFirefox({
@@ -307,7 +320,11 @@ export async function runInstall(): Promise<void> {
       : `BiDi reachable on port ${connection.port}`);
   } else {
     s.stop(connection.error ?? `Could not connect to ${browserLabel}`);
-    log.warn("Run `foxbrowser doctor` to diagnose.");
+    if (!browserPath) {
+      log.warn(`${browserLabel} is not installed. Install it and try again.`);
+    } else {
+      log.warn("Run `foxbrowser doctor` to diagnose connection issues.");
+    }
   }
 
   outro("foxbrowser is ready! Your AI agent can now control your browser.");
