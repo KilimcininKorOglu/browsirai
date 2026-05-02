@@ -368,6 +368,27 @@ Tool responses contain zero verbose hints or tips -- only the data requested. Th
 | 50 interactions/day       |         500K tokens/day |   25K tokens/day |
 | 20 devs x 22 working days |       220M tokens/month | 11M tokens/month |
 
+### Benchmark: foxbrowser vs Playwright MCP
+
+Real-world comparison on the same page ([nvidia.srv.hermestech.uk](https://nvidia.srv.hermestech.uk/) -- a data-heavy dashboard with tables, charts, and 141 model listings).
+
+| Metric                     | foxbrowser | Playwright MCP | Difference |
+|----------------------------|------------|----------------|------------|
+| Snapshot characters        | ~6,200     | ~12,800        | **52% less** |
+| Estimated tokens           | ~1,550     | ~3,200         | **52% less** |
+| Element refs               | ~230       | ~555           | **59% less** |
+| Navigate response          | 26 chars   | ~150 chars     | **83% less** |
+| Screenshot (default)       | ~500 tok   | ~10,000 tok    | **95% less** |
+
+**Why the difference:**
+
+- foxbrowser filters `<script>`, `<style>`, `<svg>`, `<noscript>`, `<meta>`, and `aria-hidden` elements from snapshots
+- Playwright includes structural noise (`generic`, `rowgroup`, `columnheader` wrappers)
+- foxbrowser `browser_screenshot` auto-downgrades to text snapshot (~500 tokens) unless `visual: true` is explicitly requested
+- foxbrowser tool responses contain zero verbose hints -- only the requested data
+
+**Test methodology:** Both tools navigated to the same URL, called `browser_snapshot` (default parameters), and the raw text output was measured. Token estimates use the ~4 characters per token approximation. Tested on 2026-05-02.
+
 ### EventBuffer
 
 Network requests and console messages are captured via **server-side BiDi event listeners** -- not browser-side JavaScript injection. This means:
