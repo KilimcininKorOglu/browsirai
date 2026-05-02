@@ -75,6 +75,15 @@ const JWT_PATTERN =
 
 const BEARER_PATTERN = /Bearer\s+\S+/gi;
 
+const VENDOR_KEY_PATTERNS = [
+  /sk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{20,}/g,
+  /gh[pousr]_[A-Za-z0-9]{36,}/g,
+  /github_pat_[A-Za-z0-9_]{22,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /xox[bp]-[0-9]+-[A-Za-z0-9-]+/g,
+  /ya29\.[A-Za-z0-9_-]{20,}/g,
+];
+
 const REDACTED = "[REDACTED]";
 const REDACTED_JWT = "[REDACTED_JWT]";
 
@@ -165,6 +174,12 @@ export function redactInlineSecrets(
     const bearerWord = match.split(/\s+/)[0];
     return `${bearerWord} ${REDACTED}`;
   });
+
+  // Redact vendor API keys (OpenAI, Anthropic, GitHub, AWS, Slack, Google)
+  for (const pattern of VENDOR_KEY_PATTERNS) {
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, REDACTED);
+  }
 
   return result;
 }
