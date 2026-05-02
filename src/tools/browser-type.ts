@@ -1,8 +1,8 @@
 /**
  * browser_type tool — types text into a focused element or an element by ref/selector.
  *
- * Fast mode (default): uses script.callFunction with execCommand('insertText').
- * Slow mode: dispatches individual key actions per character.
+ * Fast mode (default): sends key events in 100-char chunks with 30ms pauses.
+ * Slow mode: dispatches individual key actions per character with 50ms delay.
  * submit=true: presses Enter after typing.
  */
 import type { BiDiConnection } from "../bidi/connection.js";
@@ -17,6 +17,13 @@ export interface TypeParams {
 
 export interface TypeResult {
   success: boolean;
+}
+
+const ENTER_KEY = "";
+
+function toKeyValue(char: string): string {
+  if (char === "\n" || char === "\r") return ENTER_KEY;
+  return char;
 }
 
 function delay(ms: number): Promise<void> {
@@ -55,14 +62,14 @@ export async function browserType(
 
   if (params.slowly) {
     for (let i = 0; i < params.text.length; i++) {
-      const char = params.text[i]!;
+      const keyValue = toKeyValue(params.text[i]!);
       await bidi.send("input.performActions", {
         actions: [{
           type: "key",
           id: "keyboard",
           actions: [
-            { type: "keyDown", value: char },
-            { type: "keyUp", value: char },
+            { type: "keyDown", value: keyValue },
+            { type: "keyUp", value: keyValue },
           ],
         }],
       });
@@ -71,21 +78,28 @@ export async function browserType(
       }
     }
   } else {
-    // Fast mode: batch key actions without per-character delay
-    const keyActions: unknown[] = [];
-    for (const char of params.text) {
-      keyActions.push(
-        { type: "keyDown", value: char },
-        { type: "keyUp", value: char },
-      );
+    // Fast mode: send key actions in chunks to allow framework state sync
+    const CHUNK_SIZE = 100;
+    for (let offset = 0; offset < params.text.length; offset += CHUNK_SIZE) {
+      const chunk = params.text.slice(offset, offset + CHUNK_SIZE);
+      const keyActions: unknown[] = [];
+      for (const char of chunk) {
+        keyActions.push(
+          { type: "keyDown", value: toKeyValue(char) },
+          { type: "keyUp", value: toKeyValue(char) },
+        );
+      }
+      await bidi.send("input.performActions", {
+        actions: [{
+          type: "key",
+          id: "keyboard",
+          actions: keyActions,
+        }],
+      });
+      if (offset + CHUNK_SIZE < params.text.length) {
+        await delay(30);
+      }
     }
-    await bidi.send("input.performActions", {
-      actions: [{
-        type: "key",
-        id: "keyboard",
-        actions: keyActions,
-      }],
-    });
   }
 
   // Verify text was typed — fallback for React-controlled inputs
@@ -113,8 +127,8 @@ export async function browserType(
         type: "key",
         id: "keyboard",
         actions: [
-          { type: "keyDown", value: "\uE006" },
-          { type: "keyUp", value: "\uE006" },
+          { type: "keyDown", value: ENTER_KEY },
+          { type: "keyUp", value: ENTER_KEY },
         ],
       }],
     });

@@ -2,7 +2,7 @@
  * browser_fill_form tool — fills form fields by ref or CSS selector via BiDi.
  *
  * Supports field types:
- *   - textbox: focus -> clear -> insertText -> dispatch events
+ *   - textbox: focus -> clear -> type key events -> dispatch events
  *   - checkbox/radio: click to toggle
  *   - combobox/slider: set value via script.callFunction
  */
@@ -29,6 +29,13 @@ export interface FillFormResult {
   success: boolean;
   filledCount: number;
   errors?: FillFormError[];
+}
+
+const ENTER_KEY = "";
+
+function toKeyValue(char: string): string {
+  if (char === "\n" || char === "\r") return ENTER_KEY;
+  return char;
 }
 
 function resolveElementScript(field: FillFormField): string {
@@ -81,21 +88,28 @@ async function fillTextbox(bidi: BiDiConnection, field: FillFormField): Promise<
     }],
   });
 
-  // Type new value via real key events
-  const keyActions: unknown[] = [];
-  for (const char of field.value) {
-    keyActions.push(
-      { type: "keyDown", value: char },
-      { type: "keyUp", value: char },
-    );
+  // Type new value via real key events in chunks
+  const CHUNK_SIZE = 100;
+  for (let offset = 0; offset < field.value.length; offset += CHUNK_SIZE) {
+    const chunk = field.value.slice(offset, offset + CHUNK_SIZE);
+    const keyActions: unknown[] = [];
+    for (const char of chunk) {
+      keyActions.push(
+        { type: "keyDown", value: toKeyValue(char) },
+        { type: "keyUp", value: toKeyValue(char) },
+      );
+    }
+    await bidi.send("input.performActions", {
+      actions: [{
+        type: "key",
+        id: "keyboard",
+        actions: keyActions,
+      }],
+    });
+    if (offset + CHUNK_SIZE < field.value.length) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
   }
-  await bidi.send("input.performActions", {
-    actions: [{
-      type: "key",
-      id: "keyboard",
-      actions: keyActions,
-    }],
-  });
 
   // Verify value was set — fallback for React-controlled inputs
   const escaped = JSON.stringify(field.value);
