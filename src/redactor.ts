@@ -40,6 +40,12 @@ const SENSITIVE_HEADERS = new Set([
   "x-refresh-token",
   "x-secret",
   "x-token",
+  "x-amz-security-token",
+  "x-amz-content-sha256",
+  "x-github-token",
+  "x-session-token",
+  "x-forwarded-authorization",
+  "x-client-secret",
 ]);
 
 const SENSITIVE_BODY_KEYS = new Set([
