@@ -256,8 +256,8 @@ foxbrowser snapshot -i
 
 | Tool              | What it does                                                                               | ~Tokens |
 |-------------------|--------------------------------------------------------------------------------------------|--------:|
-| `browser_connect` | Connect to Firefox via WebDriver BiDi. Auto-launches if needed. Injects agent skill hints. |       - |
-| `browser_firefox_info` | Firefox version, user-agent, session status, open tab count.                          |     ~10 |
+| `browser_connect` | Connect to browser via WebDriver BiDi. Auto-launches if needed. `browser` param selects fork. |       - |
+| `browser_firefox_info` | Browser version, user-agent, session status, open tab count.                          |     ~10 |
 | `browser_tabs`    | List open tabs, filter by title/URL glob.                                                  |     ~10 |
 | `browser_list`    | List available browser instances on default ports.                                         |     ~10 |
 | `browser_close`   | Close tab(s) or detach. `force: true` to actually close.                                   |       - |
@@ -327,7 +327,7 @@ foxbrowser uses **WebDriver BiDi** -- the W3C standard bidirectional protocol fo
 
 ```
 ┌──────────────────┐     WebDriver BiDi      ┌──────────────────┐
-│  foxbrowser       │ ◄──────────────────────► │  Firefox         │
+│  foxbrowser       │ ◄──────────────────────► │  Browser         │
 │  MCP Server      │     WebSocket            │  (BiDi endpoint) │
 │                  │                          │                  │
 │  - Tool handlers │                          │  - DOM access    │
@@ -390,7 +390,6 @@ On every `browser_connect`, foxbrowser injects a structured skill document into 
 - **Cost hierarchy** -- guides the agent to prefer `evaluate` > `snapshot` > `screenshot`
 - **Workflow patterns** -- snapshot-ref interaction model, when to re-snapshot
 - **Identity resolution** -- use browser session cookies, never guess usernames
-- **Per-tool hints** -- appended to each tool response (ref staling warnings, cross-origin limitations)
 
 ## Configuration
 
@@ -417,9 +416,10 @@ Default path: `~/.foxbrowser/config.json`
   "firefox": {
     "port": 9222,
     "host": "127.0.0.1",
-    "browser": "firefox",             // firefox, waterfox, librewolf, floorp, zen
+    "browser": "firefox",
     "profilePath": "/path/to/profile",
-    "firefoxArgs": ["--safe-mode"],   // config file only, not exposed via MCP API
+    "firefoxArgs": ["--safe-mode"],
+    "prefs": {},
     "acceptInsecureCerts": false
   },
   "screenshot": {
@@ -457,31 +457,31 @@ Environment variables can be passed via your MCP config:
 }
 ```
 
-### Using an Existing Firefox Profile
+### Using an Existing Browser Profile
 
 To access your logged-in sessions, cookies, and saved passwords:
 
-1. Find your profile path: open `about:profiles` in Firefox
+1. Find your profile path: open `about:profiles` in your browser
 2. Set `FOXBROWSER_PROFILE` to the profile's root directory
 
-foxbrowser automatically detects if the profile is locked by your running Firefox and copies the essential files (cookies, logins, certificates, storage) to a temp directory. Your personal Firefox stays untouched.
+foxbrowser automatically detects if the profile is locked by your running browser and copies the essential files (cookies, logins, certificates, storage) to a temp directory. Your personal browser stays untouched.
 
-Alternatively, launch Firefox with remote debugging enabled to connect directly:
+Alternatively, launch your browser with remote debugging enabled to connect directly:
 
 ```bash
-firefox --remote-debugging-port=9222
+firefox --remote-debugging-port=9222    # or waterfox, librewolf, floorp, zen
 ```
 
 foxbrowser will auto-detect and connect to it without launching a new instance.
 
 ## Process Safety
 
-foxbrowser never touches your personal Firefox session:
+foxbrowser never touches your personal browser session:
 
-- If your Firefox is already running, foxbrowser launches a separate instance
-- When `profilePath` is set and the profile is locked, foxbrowser copies cookies/logins to a temp directory instead of interfering with the running Firefox
+- If your browser is already running, foxbrowser launches a separate instance
+- When `profilePath` is set and the profile is locked, foxbrowser copies cookies/logins to a temp directory instead of interfering with the running browser
 - `browser_close` only affects foxbrowser's own tabs and instances
-- **Never** use `pkill firefox` or `killall firefox` -- this kills all Firefox processes including your personal browser
+- **Never** use `pkill` or `killall` on browser processes -- this kills all instances including your personal browser
 
 ## Diagnostics
 
@@ -489,13 +489,13 @@ foxbrowser never touches your personal Firefox session:
 foxbrowser doctor
 ```
 
-Checks Firefox installation, Node.js version, BiDi connectivity, and platform configuration.
+Checks browser installation, Node.js version, BiDi connectivity, and platform configuration.
 
 ## Security
 
 ### What foxbrowser does
 
-- Launches a **Firefox instance** with WebDriver BiDi enabled
+- Launches a **browser instance** with WebDriver BiDi enabled
 - Returns only **page content** to the agent (DOM text, evaluate results, snapshots)
 - **Redacts secrets** in network output: Authorization, Cookie, Set-Cookie, Bearer tokens, JWTs, and vendor API keys
 - **Case-insensitive** body key redaction (password, token, client_secret in any casing)
@@ -509,7 +509,7 @@ Checks Firefox installation, Node.js version, BiDi connectivity, and platform co
 - Store credentials in any config file
 - Use a cloud relay or proxy
 - Require you to enter passwords into the agent
-- Modify your Firefox profile or existing sessions
+- Modify your browser profile or existing sessions
 - Expose `firefoxArgs` via MCP API (config file only -- prevents flag injection)
 
 ## Supported Platforms
