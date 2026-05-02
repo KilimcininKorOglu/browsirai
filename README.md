@@ -232,13 +232,16 @@ foxbrowser snapshot -i
 |-------------------------|-------------------------------------------------------------------------------------------------------------|
 | **WebDriver BiDi**      | W3C standard protocol. Cross-browser compatible, future-proof.                                              |
 | **Daemon Architecture** | MCP server survives browser crashes. Auto-reconnects on next `browser_connect`.                             |
+| **Profile Support**     | Use your existing Firefox profile with `FOXBROWSER_PROFILE` or `profilePath`. Access saved logins/cookies.  |
 | **Skill Injection**     | On every connect, injects workflow hints, cost hierarchy, and identity resolution rules into agent context. |
 | **EventBuffer Capture** | Server-side BiDi event listeners. Network requests and console messages survive page navigations.           |
 | **Source Inspection**   | Maps DOM elements to source code: React (Fiber tree + jsxDEV), Vue (`__file`), Svelte (`__svelte_meta`).    |
 | **Network Intercept**   | Route, abort, and mock HTTP requests with glob pattern matching via BiDi network module.                    |
 | **Element Refs**        | Accessibility tree nodes get `@eN` refs. Click, fill, hover, drag -- all by ref.                            |
+| **Clean Snapshots**     | Filters out script, style, SVG, and aria-hidden noise. Only meaningful content in the tree.                 |
 | **Pixel Diff**          | Compare two screenshots pixel-by-pixel. Returns diff percentage and visual overlay.                         |
 | **Session Persistence** | Save/load cookies, localStorage, sessionStorage across agent sessions.                                      |
+| **Insecure Certs**      | Accept self-signed TLS certificates with `ACCEPT_INSECURE_CERTS=true` for local development.               |
 | **Auto-Upgrade**        | Checks npm registry on server start. Background upgrade applies on next restart.                            |
 | **Cost Optimization**   | `browser_screenshot` auto-returns text snapshot (~500 tokens) unless `visual: true` (~10K tokens).          |
 
@@ -382,6 +385,92 @@ On every `browser_connect`, foxbrowser injects a structured skill document into 
 - **Identity resolution** -- use browser session cookies, never guess usernames
 - **Per-tool hints** -- appended to each tool response (ref staling warnings, cross-origin limitations)
 
+## Configuration
+
+foxbrowser can be configured through environment variables, a JSON config file, or `browser_connect` tool parameters. Priority: environment variables > config file > defaults.
+
+### Environment Variables
+
+| Variable                | Description                           | Default     |
+|-------------------------|---------------------------------------|-------------|
+| `FIREFOX_DEBUG_PORT`    | Remote debugging port                 | `9222`      |
+| `FOXBROWSER_HOST`       | Debug host address                    | `127.0.0.1` |
+| `FOXBROWSER_HEADLESS`   | Launch Firefox in headless mode       | `false`     |
+| `FOXBROWSER_PROFILE`    | Path to Firefox profile directory     | (auto)      |
+| `FOXBROWSER_CONFIG`     | Path to config file                   | (see below) |
+| `ACCEPT_INSECURE_CERTS` | Accept self-signed TLS certificates   | `false`     |
+
+### Config File
+
+Default path: `~/.foxbrowser/config.json`
+
+```json
+{
+  "firefox": {
+    "port": 9222,
+    "host": "127.0.0.1",
+    "profilePath": "/path/to/firefox/profile",
+    "firefoxArgs": ["--safe-mode"],
+    "acceptInsecureCerts": false
+  },
+  "screenshot": {
+    "quality": 80,
+    "maxWidth": 1280
+  },
+  "network": {
+    "maxRequests": 100
+  },
+  "connection": {
+    "connectTimeout": 5000,
+    "reconnectAttempts": 3,
+    "commandTimeout": 30000
+  }
+}
+```
+
+### MCP Server Configuration
+
+Environment variables can be passed via your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "foxbrowser": {
+      "command": "npx",
+      "args": ["-y", "foxbrowser"],
+      "env": {
+        "FOXBROWSER_PROFILE": "/path/to/firefox/profile",
+        "ACCEPT_INSECURE_CERTS": "true"
+      }
+    }
+  }
+}
+```
+
+### Using an Existing Firefox Profile
+
+To access your logged-in sessions, cookies, and saved passwords:
+
+1. Find your profile path: open `about:profiles` in Firefox
+2. Set `FOXBROWSER_PROFILE` to the profile's root directory
+3. Firefox must not be running with that profile (or use a separate profile copy)
+
+Alternatively, launch Firefox with remote debugging enabled to connect directly:
+
+```bash
+firefox --remote-debugging-port=9222
+```
+
+foxbrowser will auto-detect and connect to it without launching a new instance.
+
+## Process Safety
+
+foxbrowser never touches your personal Firefox session:
+
+- If your Firefox is already running, foxbrowser launches a separate instance with a temporary profile
+- `browser_close` only affects foxbrowser's own tabs and instances
+- **Never** use `pkill firefox` or `killall firefox` -- this kills all Firefox processes including your personal browser
+
 ## Diagnostics
 
 ```bash
@@ -444,7 +533,31 @@ The MCP server stays alive. On the next `browser_connect`, it launches a fresh F
 <details>
 <summary><strong>Does it work headless?</strong></summary>
 
-Yes. `browser_connect { headless: true }`. Note: some services may detect headless browsers.
+Yes. `browser_connect { "headless": true }` or set `FOXBROWSER_HEADLESS=1`. Note: some services may detect headless browsers.
+</details>
+
+<details>
+<summary><strong>How do I use my existing Firefox profile?</strong></summary>
+
+Set the profile path via environment variable or config:
+
+```bash
+FOXBROWSER_PROFILE="/path/to/firefox/profile" npx foxbrowser
+```
+
+Or pass it as a tool parameter: `browser_connect { "profilePath": "/path/to/profile" }`. Find your profile path at `about:profiles` in Firefox.
+</details>
+
+<details>
+<summary><strong>Can I connect to my already-running Firefox?</strong></summary>
+
+Yes, if Firefox was launched with `--remote-debugging-port=9222`. foxbrowser will detect the open port and connect directly -- no new instance launched. Without this flag, foxbrowser launches a separate instance.
+</details>
+
+<details>
+<summary><strong>Why does foxbrowser launch a new Firefox instead of using mine?</strong></summary>
+
+Firefox requires the `--remote-debugging-port` flag at startup to enable the WebDriver BiDi protocol. This cannot be toggled on a running Firefox. To use your existing sessions, either launch Firefox with the flag or set `FOXBROWSER_PROFILE` to your profile path so foxbrowser opens a new instance with your profile data.
 </details>
 
 <details>
