@@ -172,7 +172,13 @@ mcpServers:
 
 ## CLI Mode
 
-foxbrowser also works as a standalone CLI -- no LLM required. Same commands, same Firefox connection.
+foxbrowser also works as a standalone CLI -- no LLM required. Same commands, same browser connection.
+
+```bash
+npm install -g foxbrowser     # global install for CLI usage
+```
+
+Or use without installing: `npx foxbrowser <command>`.
 
 ```bash
 foxbrowser open example.com
