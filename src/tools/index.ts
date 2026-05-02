@@ -1132,7 +1132,7 @@ function createHandlers(): Record<string, ToolHandler> {
         const conn = await getBiDi();
         const result = await browserSaveState(conn, args as any);
         return textResult(
-          `State "${result.name}" saved to ${result.path}\n` +
+          `State "${result.name}" saved\n` +
           `Cookies: ${result.cookies}, localStorage: ${result.localStorage}, sessionStorage: ${result.sessionStorage}`
         );
       } catch (e: any) {

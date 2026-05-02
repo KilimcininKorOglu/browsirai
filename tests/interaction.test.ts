@@ -4361,11 +4361,11 @@ describe("browser_save_state", () => {
 
     const result = await browserSaveState(cdp as never, { name: "my-state" });
 
-    expect(result.path).toBe("/mock-home/.foxbrowser/states/my-state.json");
+    expect(result.path).toBe("my-state");
     expect(vi.mocked(writeFileSync)).toHaveBeenCalledWith(
       "/mock-home/.foxbrowser/states/my-state.json",
       expect.any(String),
-      "utf-8",
+      { encoding: "utf-8", mode: 0o600 },
     );
   });
 
@@ -4524,6 +4524,6 @@ describe("browser_load_state", () => {
 
     await expect(
       browserLoadState(cdp as never, { name: "nonexistent" }),
-    ).rejects.toThrow("State file not found");
+    ).rejects.toThrow('State "nonexistent" not found');
   });
 });

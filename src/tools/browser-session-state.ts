@@ -91,9 +91,9 @@ export async function browserSaveState(
   const filePath = join(dir, `${name}.json`);
 
   const stateFile: StateFile = { version: 1, savedAt: new Date().toISOString(), url, cookies, localStorage, sessionStorage };
-  writeFileSync(filePath, JSON.stringify(stateFile, null, 2), "utf-8");
+  writeFileSync(filePath, JSON.stringify(stateFile, null, 2), { encoding: "utf-8", mode: 0o600 });
 
-  return { name, path: filePath, cookies: cookies.length, localStorage: localStorageEntries.length, sessionStorage: sessionStorageEntries.length };
+  return { name, path: name, cookies: cookies.length, localStorage: localStorageEntries.length, sessionStorage: sessionStorageEntries.length };
 }
 
 export async function browserLoadState(
@@ -104,7 +104,7 @@ export async function browserLoadState(
   validateStateName(name);
 
   const filePath = getStatePath(name);
-  if (!existsSync(filePath)) throw new Error(`State file not found: ${filePath}`);
+  if (!existsSync(filePath)) throw new Error(`State "${name}" not found`);
 
   const stateFile: StateFile = JSON.parse(readFileSync(filePath, "utf-8"));
 
