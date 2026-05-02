@@ -5,11 +5,54 @@
 import { intro, select, confirm, spinner, outro, note, isCancel, cancel, log } from "@clack/prompts";
 import { detectPlatform, getInstallConfig } from "./adapters/detect.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { connectFirefox } from "./firefox-launcher.js";
+import { connectFirefox, getDefaultFirefoxDataDir } from "./firefox-launcher.js";
 
 import type { PlatformId } from "./adapters/types.js";
+
+interface FirefoxProfile {
+  name: string;
+  path: string;
+  isRelative: boolean;
+  isDefault: boolean;
+}
+
+function parseFirefoxProfiles(): FirefoxProfile[] {
+  const dataDir = getDefaultFirefoxDataDir();
+  const iniPath = join(dataDir, "profiles.ini");
+  if (!existsSync(iniPath)) return [];
+
+  const content = readFileSync(iniPath, "utf-8");
+  const profiles: FirefoxProfile[] = [];
+  let current: Partial<FirefoxProfile> = {};
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("[Profile")) {
+      if (current.name && current.path) {
+        profiles.push(current as FirefoxProfile);
+      }
+      current = { isRelative: true, isDefault: false };
+    } else if (trimmed.startsWith("Name=")) {
+      current.name = trimmed.slice(5);
+    } else if (trimmed.startsWith("Path=")) {
+      current.path = trimmed.slice(5);
+    } else if (trimmed.startsWith("IsRelative=")) {
+      current.isRelative = trimmed.slice(11) === "1";
+    } else if (trimmed.startsWith("Default=1")) {
+      current.isDefault = true;
+    }
+  }
+  if (current.name && current.path) {
+    profiles.push(current as FirefoxProfile);
+  }
+
+  return profiles.map(p => ({
+    ...p,
+    path: p.isRelative ? join(dataDir, p.path) : p.path,
+  }));
+}
 
 /** All supported platforms for the select prompt. */
 const platformOptions: Array<{ value: PlatformId; label: string }> = [
@@ -100,13 +143,48 @@ export async function runInstall(): Promise<void> {
   const selectedPlatform = platform as PlatformId;
   const selectedScope = scope as string;
 
+  // Firefox profile selection
+  const profiles = parseFirefoxProfiles();
+  let selectedProfilePath: string | undefined;
+
+  if (profiles.length > 0) {
+    const profileChoice = await select({
+      message: "Firefox profile to use:",
+      options: [
+        { value: "__none__", label: "None (auto-launch with temporary profile)" },
+        ...profiles.map(p => ({
+          value: p.path,
+          label: p.isDefault ? `${p.name} (default)` : p.name,
+          hint: p.path,
+        })),
+      ],
+    });
+
+    if (isCancel(profileChoice)) {
+      cancel("Installation cancelled.");
+      return;
+    }
+
+    if (profileChoice !== "__none__") {
+      selectedProfilePath = profileChoice as string;
+    }
+  }
+
   // Get install config for chosen platform
   const config = getInstallConfig(selectedPlatform);
+
+  // Build server entry with optional profile
+  const serverEntry = { ...config.serverEntry } as Record<string, unknown>;
+  if (selectedProfilePath) {
+    const env = (serverEntry.env ?? {}) as Record<string, string>;
+    env.FOXBROWSER_PROFILE = selectedProfilePath;
+    serverEntry.env = env;
+  }
 
   // Build config object
   const serverConfig: Record<string, unknown> = {
     [config.configKey]: {
-      foxbrowser: config.serverEntry,
+      foxbrowser: serverEntry,
     },
   };
 
@@ -131,7 +209,7 @@ export async function runInstall(): Promise<void> {
     const existingSection = (existingConfig[config.configKey] ?? {}) as Record<string, unknown>;
     existingConfig[config.configKey] = {
       ...existingSection,
-      foxbrowser: config.serverEntry,
+      foxbrowser: serverEntry,
     };
 
     // Ensure parent directory exists
@@ -149,7 +227,10 @@ export async function runInstall(): Promise<void> {
   const s = spinner();
   s.start("Connecting to Firefox via WebDriver BiDi...");
 
-  const connection = await connectFirefox({ autoLaunch: true });
+  const connection = await connectFirefox({
+    autoLaunch: true,
+    profilePath: selectedProfilePath,
+  });
   if (connection.success) {
     s.stop(connection.wsEndpoint
       ? `Connected to Firefox (port ${connection.port})`
