@@ -14,7 +14,7 @@
  * @module browser-network-requests
  */
 import { EventBuffer } from "../event-buffer.js";
-import { redactInlineSecrets } from "../redactor.js";
+import { redactInlineSecrets, redactHeaders } from "../redactor.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -235,7 +235,7 @@ export async function browserNetworkRequest(
     method: entry.method,
     status: entry.status,
     type: entry.type,
-    requestHeaders: entry.requestHeaders,
-    responseHeaders: entry.responseHeaders,
+    requestHeaders: entry.requestHeaders ? redactHeaders(entry.requestHeaders) : undefined,
+    responseHeaders: entry.responseHeaders ? redactHeaders(entry.responseHeaders) : undefined,
   };
 }
