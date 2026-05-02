@@ -8,9 +8,9 @@
  */
 
 import { execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import http from "node:http";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { createConnection } from "node:net";
 
@@ -38,6 +38,63 @@ export interface ConnectResult {
   wsEndpoint?: string;
   /** Error message if connection failed */
   error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Profile copy for locked profiles
+// ---------------------------------------------------------------------------
+
+const PROFILE_ESSENTIAL_FILES = [
+  "cookies.sqlite", "cookies.sqlite-wal", "cookies.sqlite-shm",
+  "key4.db", "cert9.db",
+  "logins.json", "logins-backup.json",
+  "permissions.sqlite",
+  "storage.sqlite",
+  "storage-sync-v2.sqlite", "storage-sync-v2.sqlite-wal", "storage-sync-v2.sqlite-shm",
+];
+
+function isProfileLocked(profilePath: string): boolean {
+  return existsSync(join(profilePath, ".parentlock")) || existsSync(join(profilePath, "lock"));
+}
+
+function copyProfileToTemp(sourceProfile: string): string {
+  const tempDir = join(tmpdir(), "foxbrowser-profile-copy");
+  mkdirSync(tempDir, { recursive: true });
+
+  for (const file of PROFILE_ESSENTIAL_FILES) {
+    const src = join(sourceProfile, file);
+    if (existsSync(src)) {
+      copyFileSync(src, join(tempDir, file));
+    }
+  }
+
+  // Copy storage/ directory (localStorage, sessionStorage, IndexedDB)
+  const storageDir = join(sourceProfile, "storage");
+  if (existsSync(storageDir)) {
+    copyDirRecursive(storageDir, join(tempDir, "storage"));
+  }
+
+  // Remove lock files from copy
+  const lockFiles = [".parentlock", "lock"];
+  for (const lf of lockFiles) {
+    const lockPath = join(tempDir, lf);
+    if (existsSync(lockPath)) unlinkSync(lockPath);
+  }
+
+  return tempDir;
+}
+
+function copyDirRecursive(src: string, dest: string): void {
+  mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src)) {
+    const srcPath = join(src, entry);
+    const destPath = join(dest, entry);
+    if (statSync(srcPath).isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,10 +339,16 @@ export async function launchFirefoxWithDebugging(
   const usesSeparateInstance = isFirefoxRunning();
   const targetPort = usesSeparateInstance ? SEPARATE_PORT : port;
 
-  const profileDir = profilePath
-    ?? (usesSeparateInstance ? join(tmpdir(), "foxbrowser-firefox") : undefined);
+  let profileDir: string | undefined;
 
-  if (profileDir && !profilePath) {
+  if (profilePath) {
+    if (isProfileLocked(profilePath)) {
+      profileDir = copyProfileToTemp(profilePath);
+    } else {
+      profileDir = profilePath;
+    }
+  } else if (usesSeparateInstance) {
+    profileDir = join(tmpdir(), "foxbrowser-firefox");
     mkdirSync(profileDir, { recursive: true });
   }
 
