@@ -245,13 +245,14 @@ foxbrowser snapshot -i
 | **Auto-Upgrade**        | Checks npm registry on server start. Background upgrade applies on next restart.                            |
 | **Cost Optimization**   | `browser_screenshot` auto-returns text snapshot (~500 tokens) unless `visual: true` (~10K tokens).          |
 
-## Tools (33)
+## Tools (35)
 
 ### Connection and Lifecycle
 
 | Tool              | What it does                                                                               | ~Tokens |
 |-------------------|--------------------------------------------------------------------------------------------|--------:|
 | `browser_connect` | Connect to Firefox via WebDriver BiDi. Auto-launches if needed. Injects agent skill hints. |       - |
+| `browser_firefox_info` | Firefox version, user-agent, session status, open tab count.                          |     ~10 |
 | `browser_tabs`    | List open tabs, filter by title/URL glob.                                                  |     ~10 |
 | `browser_list`    | List available browser instances on default ports.                                         |     ~10 |
 | `browser_close`   | Close tab(s) or detach. `force: true` to actually close.                                   |       - |
@@ -271,7 +272,7 @@ foxbrowser snapshot -i
 | Tool                           | What it does                                                                           |   ~Tokens |
 |--------------------------------|----------------------------------------------------------------------------------------|----------:|
 | `browser_snapshot`             | Accessibility tree with `@eN` refs. `compact`, `interactive`, `cursor`, `depth` modes. |      ~500 |
-| `browser_screenshot`           | Returns text snapshot by default. `visual: true` for base64 image.                     | ~500/~10K |
+| `browser_screenshot`           | Returns text snapshot by default. `visual: true` for image. `saveTo` saves to disk.    | ~500/~10K |
 | `browser_annotated_screenshot` | Screenshot with numbered labels on interactive elements.                               |      ~12K |
 | `browser_html`                 | Raw HTML of page or element by selector.                                               |      ~500 |
 | `browser_find`                 | Find elements by ARIA role, name, or text. Returns `@eN` ref.                          |      ~100 |
@@ -296,7 +297,8 @@ foxbrowser snapshot -i
 
 | Tool                       | What it does                                                                           | ~Tokens |
 |----------------------------|----------------------------------------------------------------------------------------|--------:|
-| `browser_network_requests` | List captured requests. Filter by URL glob, exclude static resources, include headers. |    ~100 |
+| `browser_network_requests` | List captured requests. Filter by URL glob, exclude static resources.                  |    ~100 |
+| `browser_network_request`  | Get full details (headers) of a single request by index.                               |    ~200 |
 | `browser_console_messages` | Retrieve console log/warn/error/info messages. Filter by level.                        |    ~100 |
 | `browser_route`            | Intercept requests matching URL glob. Respond with custom body/status/headers.         |     ~10 |
 | `browser_abort`            | Block requests matching URL glob.                                                      |     ~10 |
@@ -410,7 +412,7 @@ Default path: `~/.foxbrowser/config.json`
     "port": 9222,
     "host": "127.0.0.1",
     "profilePath": "/path/to/firefox/profile",
-    "firefoxArgs": ["--safe-mode"],
+    "firefoxArgs": ["--safe-mode"],   // config file only, not exposed via MCP API
     "acceptInsecureCerts": false
   },
   "screenshot": {
@@ -485,7 +487,10 @@ Checks Firefox installation, Node.js version, BiDi connectivity, and platform co
 
 - Launches a **Firefox instance** with WebDriver BiDi enabled
 - Returns only **page content** to the agent (DOM text, evaluate results, snapshots)
-- **Redacts secrets** in network output (Authorization, Cookie, Set-Cookie, Bearer tokens, JWTs)
+- **Redacts secrets** in network output: Authorization, Cookie, Set-Cookie, Bearer tokens, JWTs, and vendor API keys
+- **Case-insensitive** body key redaction (password, token, client_secret in any casing)
+- **Restricts file permissions** on saved session state (owner-only, `0o600`)
+- **Strips filesystem paths** from responses to prevent home directory disclosure
 - Resets state gracefully when Firefox closes (MCP server stays alive)
 
 ### What foxbrowser does NOT do
@@ -495,20 +500,21 @@ Checks Firefox installation, Node.js version, BiDi connectivity, and platform co
 - Use a cloud relay or proxy
 - Require you to enter passwords into the agent
 - Modify your Firefox profile or existing sessions
+- Expose `firefoxArgs` via MCP API (config file only -- prevents flag injection)
 
 ## Supported Platforms
 
-| Platform        | Status |
-|-----------------|--------|
-| Claude Code     | Y      |
-| Cursor          | Y      |
-| Gemini CLI      | Y      |
-| VS Code Copilot | Y      |
-| Windsurf        | Y      |
-| Cline           | Y      |
-| Zed             | Y      |
-| Continue        | Y      |
-| OpenCode        | Y      |
+| Platform        | Auto-detect | Config format |
+|-----------------|-------------|---------------|
+| Claude Code     | Yes         | JSON          |
+| Cursor          | Yes         | JSON          |
+| Gemini CLI      | Yes         | JSON          |
+| VS Code Copilot | Yes         | JSON          |
+| Windsurf        | Yes         | JSON          |
+| Zed             | Yes         | JSON          |
+| OpenCode        | Yes         | JSON          |
+| Cline           | Manual      | JSON          |
+| Continue        | Manual      | YAML          |
 
 ## FAQ
 
