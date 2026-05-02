@@ -9,7 +9,7 @@
 export type ErrorType =
   | "not_connected"
   | "invalid_selector"
-  | "cdp_timeout"
+  | "bidi_timeout"
   | "tab_not_found";
 
 export interface ErrorOptions {
@@ -28,8 +28,8 @@ const ERROR_MESSAGES: Record<ErrorType, (opts?: ErrorOptions) => string> = {
     "Not connected to browser. Run browser_connect first.",
   invalid_selector: (opts) =>
     `Invalid selector: ${opts?.selector ?? "<unknown>"}`,
-  cdp_timeout: (opts) =>
-    `CDP command timed out after ${opts?.timeout ?? 0}ms`,
+  bidi_timeout: (opts) =>
+    `BiDi command timed out after ${opts?.timeout ?? 0}ms`,
   tab_not_found: (opts) =>
     `Tab not found: ${opts?.targetId ?? "<unknown>"}`,
 };

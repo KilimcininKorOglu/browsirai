@@ -156,10 +156,12 @@ export async function browserNetworkRequests(
     entries = entries.filter((e) => !STATIC_TYPES.has(e.type));
   }
 
-  // Filter by URL substring
+  // Filter by URL (strip glob wildcards for substring match)
   if (params.filter) {
-    const filterLower = params.filter.toLowerCase();
-    entries = entries.filter((e) => e.url.toLowerCase().includes(filterLower));
+    const stripped = params.filter.replace(/\*/g, "").toLowerCase();
+    if (stripped) {
+      entries = entries.filter((e) => e.url.toLowerCase().includes(stripped));
+    }
   }
 
   // Apply limit

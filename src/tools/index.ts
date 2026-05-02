@@ -747,7 +747,8 @@ function createHandlers(): Record<string, ToolHandler> {
       try {
         const conn = await getBiDi();
         const result = await browserScroll(conn, args as any);
-        return textResult(typeof result === "string" ? result : JSON.stringify(result));
+        if (typeof result === "string") return textResult(result);
+        return textResult(result.success ? "Scrolled successfully" : "Scroll failed");
       } catch (e: any) {
         return errorResult(e.message);
       }
@@ -757,7 +758,9 @@ function createHandlers(): Record<string, ToolHandler> {
       try {
         const conn = await getBiDi();
         const result = await browserHtml(conn, args as any);
-        return textResult(typeof result === "string" ? result : JSON.stringify(result));
+        if (typeof result === "string") return textResult(result);
+        if (result.error) return errorResult(result.error);
+        return textResult(result.html ?? "");
       } catch (e: any) {
         return errorResult(e.message);
       }

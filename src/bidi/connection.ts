@@ -240,7 +240,16 @@ export class BiDiConnection {
     this.attachListeners(ws);
 
     // Firefox BiDi requires an explicit session before any commands work.
-    await this.send("session.new", { capabilities: {} });
+    try {
+      await this.send("session.new", { capabilities: {} });
+    } catch {
+      // session.new failed — verify the connection is still usable
+      try {
+        await this.send("session.status", {});
+      } catch {
+        throw new Error("Failed to create BiDi session and no existing session found");
+      }
+    }
   }
 
   /**

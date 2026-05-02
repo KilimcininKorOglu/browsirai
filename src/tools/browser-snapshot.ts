@@ -190,8 +190,12 @@ export async function browserSnapshot(
         return parts.join(' ');
       }
 
+      const SKIP_TAGS = new Set(['script','style','noscript','head','meta','link','template','svg','path','g','rect','circle','defs','clippath','lineargradient','stop']);
+
       function traverse(el, depth) {
         if (depth > maxDepth) return;
+        if (SKIP_TAGS.has(el.tagName.toLowerCase())) return;
+        if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return;
         counter++;
         const role = getRole(el);
         let name = getName(el);

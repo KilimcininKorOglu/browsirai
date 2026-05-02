@@ -1430,13 +1430,13 @@ describe("Error Response Format", () => {
     expect(response.content[0]!.text).toContain("###bad");
   });
 
-  it("CDP timeout returns error with timeout duration", () => {
-    const response = createErrorResponse("cdp_timeout", { timeout: 30000 });
+  it("BiDi timeout returns error with timeout duration", () => {
+    const response = createErrorResponse("bidi_timeout", { timeout: 30000 });
     expect(response).toEqual({
       content: [
         {
           type: "text",
-          text: "CDP command timed out after 30000ms",
+          text: "BiDi command timed out after 30000ms",
         },
       ],
       isError: true,
@@ -1461,7 +1461,7 @@ describe("Error Response Format", () => {
   it("error responses always have isError: true", () => {
     const errorTypes = [
       "not_connected",
-      "cdp_timeout",
+      "bidi_timeout",
       "tab_not_found",
     ] as const;
 
