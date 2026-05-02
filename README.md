@@ -29,13 +29,18 @@ An MCP server + CLI that connects AI coding agents to Firefox and Gecko-based br
 npx foxbrowser install
 ```
 
-Auto-detects your AI platform and configures the MCP server. No global install needed.
+Interactive installer that auto-detects your AI platform, lets you choose your browser (Firefox, Waterfox, LibreWolf, Floorp, Zen), select a profile for session access, and writes the MCP config. No global install needed.
 
 <details>
 <summary><strong>Claude Code</strong></summary>
 
+CLI:
+```bash
+claude mcp add foxbrowser npx -- -y foxbrowser
+```
+
+Or add to `.mcp.json`:
 ```json
-// .mcp.json
 {
   "mcpServers": {
     "foxbrowser": {
@@ -51,7 +56,7 @@ Auto-detects your AI platform and configures the MCP server. No global install n
 <summary><strong>Cursor</strong></summary>
 
 ```json
-// .cursor/mcp.json
+
 {
   "mcpServers": {
     "foxbrowser": {
@@ -67,7 +72,7 @@ Auto-detects your AI platform and configures the MCP server. No global install n
 <summary><strong>VS Code Copilot</strong></summary>
 
 ```json
-// .vscode/mcp.json
+
 {
   "servers": {
     "foxbrowser": {
@@ -83,7 +88,7 @@ Auto-detects your AI platform and configures the MCP server. No global install n
 <summary><strong>Gemini CLI</strong></summary>
 
 ```json
-// ~/.gemini/settings.json
+
 {
   "mcpServers": {
     "foxbrowser": {
@@ -99,7 +104,7 @@ Auto-detects your AI platform and configures the MCP server. No global install n
 <summary><strong>Windsurf</strong></summary>
 
 ```json
-// ~/.codeium/windsurf/mcp_config.json
+
 {
   "mcpServers": {
     "foxbrowser": {
@@ -115,7 +120,7 @@ Auto-detects your AI platform and configures the MCP server. No global install n
 <summary><strong>Cline</strong></summary>
 
 ```json
-// Cline MCP settings (Settings > MCP Servers)
+
 {
   "mcpServers": {
     "foxbrowser": {
@@ -131,7 +136,7 @@ Auto-detects your AI platform and configures the MCP server. No global install n
 <summary><strong>Zed</strong></summary>
 
 ```json
-// ~/.config/zed/settings.json
+
 {
   "context_servers": {
     "foxbrowser": {
@@ -159,7 +164,7 @@ mcpServers:
 <summary><strong>OpenCode</strong></summary>
 
 ```json
-// opencode.json
+
 {
   "mcpServers": {
     "foxbrowser": {
@@ -451,9 +456,8 @@ Environment variables can be passed via your MCP config:
       "command": "npx",
       "args": ["-y", "foxbrowser"],
       "env": {
-        "FOXBROWSER_BROWSER": "firefox",
-        "FOXBROWSER_PROFILE": "/path/to/profile",
-        "ACCEPT_INSECURE_CERTS": "true"
+        "FOXBROWSER_BROWSER": "librewolf",
+        "FOXBROWSER_PROFILE": "/path/to/profile"
       }
     }
   }
@@ -464,7 +468,10 @@ Environment variables can be passed via your MCP config:
 
 To access your logged-in sessions, cookies, and saved passwords:
 
-1. Find your profile path: open `about:profiles` in your browser
+1. Find your profile path: open `about:profiles` in your browser, or check:
+   - macOS: `~/Library/Application Support/Firefox/Profiles/`
+   - Linux: `~/.mozilla/firefox/`
+   - Windows: `%APPDATA%\Mozilla\Firefox\Profiles\`
 2. Set `FOXBROWSER_PROFILE` to the profile's root directory
 
 foxbrowser automatically detects if the profile is locked by your running browser and copies the essential files (cookies, logins, certificates, storage) to a temp directory. Your personal browser stays untouched.
