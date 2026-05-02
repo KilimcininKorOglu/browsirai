@@ -9,3 +9,4 @@ PRD-*.md
 .claude/
 .foxbrowser-mcp/
 docs/
+*.txt
