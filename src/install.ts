@@ -84,6 +84,45 @@ function resolveConfigPath(configPath: string, scope: string): string {
   return resolve(process.cwd(), configPath);
 }
 
+async function writeYamlConfig(
+  filePath: string,
+  serverEntry: Record<string, unknown>,
+  profilePath?: string,
+): Promise<void> {
+  const args = (serverEntry.args as string[]) ?? ["-y", "foxbrowser"];
+  const command = (serverEntry.command as string) ?? "npx";
+
+  let envBlock = "";
+  if (profilePath) {
+    envBlock = `\n      env:\n        FOXBROWSER_PROFILE: "${profilePath}"`;
+  }
+
+  const yamlEntry = `  foxbrowser:\n    command: ${command}\n    args: [${args.map(a => `"${a}"`).join(", ")}]${envBlock}`;
+
+  if (existsSync(filePath)) {
+    const existing = readFileSync(filePath, "utf-8");
+    if (existing.includes("foxbrowser:")) {
+      const updated = existing.replace(
+        /  foxbrowser:[\s\S]*?(?=\n  \S|\n[a-zA-Z]|\s*$)/,
+        yamlEntry,
+      );
+      writeFileSync(filePath, updated);
+    } else if (existing.includes("mcpServers:")) {
+      const updated = existing.replace(
+        "mcpServers:",
+        `mcpServers:\n${yamlEntry}`,
+      );
+      writeFileSync(filePath, updated);
+    } else {
+      const appended = existing.trimEnd() + `\nmcpServers:\n${yamlEntry}\n`;
+      writeFileSync(filePath, appended);
+    }
+  } else {
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, `mcpServers:\n${yamlEntry}\n`);
+  }
+}
+
 export async function runInstall(): Promise<void> {
   intro("foxbrowser installer");
 
@@ -103,9 +142,14 @@ export async function runInstall(): Promise<void> {
     for (const filePath of paths) {
       if (existsSync(filePath)) {
         try {
-          const existing = JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
-          const section = existing[config.configKey] as Record<string, unknown> | undefined;
-          if (section?.foxbrowser) installedPlatforms.add(opt.value);
+          const content = readFileSync(filePath, "utf-8");
+          if (filePath.endsWith(".yaml") || filePath.endsWith(".yml")) {
+            if (content.includes("foxbrowser:")) installedPlatforms.add(opt.value);
+          } else {
+            const existing = JSON.parse(content) as Record<string, unknown>;
+            const section = existing[config.configKey] as Record<string, unknown> | undefined;
+            if (section?.foxbrowser) installedPlatforms.add(opt.value);
+          }
         } catch { /* skip malformed */ }
       }
     }
@@ -181,44 +225,46 @@ export async function runInstall(): Promise<void> {
     serverEntry.env = env;
   }
 
-  // Build config object
-  const serverConfig: Record<string, unknown> = {
-    [config.configKey]: {
-      foxbrowser: serverEntry,
-    },
-  };
-
   // Resolve file path
   const filePath = resolveConfigPath(config.configPath, selectedScope);
+  const isYaml = filePath.endsWith(".yaml") || filePath.endsWith(".yml");
 
-  // Check for existing file
-  if (existsSync(filePath)) {
-    const existingRaw = readFileSync(filePath, "utf-8");
-    const existingConfig = JSON.parse(existingRaw as string) as Record<string, unknown>;
-
-    const shouldMerge = await confirm({
-      message: `Config file already exists at ${filePath}. Merge foxbrowser into it?`,
-    });
-
-    if (isCancel(shouldMerge) || !shouldMerge) {
-      cancel("Installation cancelled.");
-      return;
-    }
-
-    // Merge: preserve existing entries under the config key
-    const existingSection = (existingConfig[config.configKey] ?? {}) as Record<string, unknown>;
-    existingConfig[config.configKey] = {
-      ...existingSection,
-      foxbrowser: serverEntry,
+  if (isYaml) {
+    // YAML config (Continue) — append/write foxbrowser entry
+    await writeYamlConfig(filePath, serverEntry, selectedProfilePath);
+  } else {
+    // JSON config (all other platforms)
+    const serverConfig: Record<string, unknown> = {
+      [config.configKey]: {
+        foxbrowser: serverEntry,
+      },
     };
 
-    // Ensure parent directory exists
-    mkdirSync(dirname(filePath), { recursive: true });
-    writeFileSync(filePath, JSON.stringify(existingConfig, null, 2));
-  } else {
-    // Ensure parent directory exists
-    mkdirSync(dirname(filePath), { recursive: true });
-    writeFileSync(filePath, JSON.stringify(serverConfig, null, 2));
+    if (existsSync(filePath)) {
+      const existingRaw = readFileSync(filePath, "utf-8");
+      const existingConfig = JSON.parse(existingRaw as string) as Record<string, unknown>;
+
+      const shouldMerge = await confirm({
+        message: `Config file already exists at ${filePath}. Merge foxbrowser into it?`,
+      });
+
+      if (isCancel(shouldMerge) || !shouldMerge) {
+        cancel("Installation cancelled.");
+        return;
+      }
+
+      const existingSection = (existingConfig[config.configKey] ?? {}) as Record<string, unknown>;
+      existingConfig[config.configKey] = {
+        ...existingSection,
+        foxbrowser: serverEntry,
+      };
+
+      mkdirSync(dirname(filePath), { recursive: true });
+      writeFileSync(filePath, JSON.stringify(existingConfig, null, 2));
+    } else {
+      mkdirSync(dirname(filePath), { recursive: true });
+      writeFileSync(filePath, JSON.stringify(serverConfig, null, 2));
+    }
   }
 
   log.success(`Config written to ${filePath}`);

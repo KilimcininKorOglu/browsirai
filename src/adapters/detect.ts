@@ -34,9 +34,11 @@ export interface InstallConfig {
  * 1. Claude Code     — `CLAUDE_PROJECT_DIR` is set
  * 2. Cursor          — `CURSOR_TRACE_ID` is set
  * 3. Gemini CLI      — `GEMINI_CLI` is set
- * 4. VS Code Copilot — `VSCODE_PID` is set or `TERM_PROGRAM` is "vscode"
- * 5. OpenCode        — `OPENCODE_CONFIG` is set
- * 6. Generic         — fallback when no platform-specific env vars are found
+ * 4. Windsurf        — `TERM_PROGRAM` is "windsurf" or `WINDSURF_EXTENSION_VERSION` is set
+ * 5. Zed             — `ZED_TERM` is set or `TERM_PROGRAM` is "zed"
+ * 6. VS Code Copilot — `VSCODE_PID` is set or `TERM_PROGRAM` is "vscode"
+ * 7. OpenCode        — `OPENCODE_CONFIG` is set
+ * 8. Generic         — fallback when no platform-specific env vars are found
  */
 export function detectPlatform(): DetectionResult {
   if (process.env.CLAUDE_PROJECT_DIR) {
@@ -60,6 +62,26 @@ export function detectPlatform(): DetectionResult {
       platform: "gemini-cli",
       confidence: "high",
       reason: `GEMINI_CLI is set (${process.env.GEMINI_CLI})`,
+    };
+  }
+
+  if (process.env.TERM_PROGRAM === "windsurf" || process.env.WINDSURF_EXTENSION_VERSION) {
+    return {
+      platform: "windsurf",
+      confidence: "medium",
+      reason: process.env.WINDSURF_EXTENSION_VERSION
+        ? `WINDSURF_EXTENSION_VERSION is set`
+        : `TERM_PROGRAM is set to windsurf`,
+    };
+  }
+
+  if (process.env.ZED_TERM || process.env.TERM_PROGRAM === "zed") {
+    return {
+      platform: "zed",
+      confidence: "medium",
+      reason: process.env.ZED_TERM
+        ? `ZED_TERM is set`
+        : `TERM_PROGRAM is set to zed`,
     };
   }
 

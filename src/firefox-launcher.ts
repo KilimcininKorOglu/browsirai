@@ -57,6 +57,12 @@ const FIREFOX_PATHS: Record<string, string[]> = {
     "firefox-esr",
     "firefox-developer-edition",
     "firefox-nightly",
+    "/usr/bin/firefox",
+    "/usr/lib/firefox/firefox",
+    "/usr/lib64/firefox/firefox",
+    "/snap/bin/firefox",
+    "/opt/firefox/firefox",
+    "/usr/lib/firefox-esr/firefox-esr",
   ],
   win32: [
     "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
@@ -89,7 +95,7 @@ export function findFirefox(): string | null {
   const candidates = FIREFOX_PATHS[platform] ?? [];
 
   for (const candidate of candidates) {
-    if (platform === "darwin" || platform === "win32") {
+    if (candidate.startsWith("/") || platform === "darwin" || platform === "win32") {
       if (existsSync(candidate)) return candidate;
     } else {
       try {
