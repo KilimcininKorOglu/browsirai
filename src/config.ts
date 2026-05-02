@@ -22,10 +22,14 @@ import { join } from "node:path";
 // Zod schemas
 // ---------------------------------------------------------------------------
 
+export const SUPPORTED_BROWSERS = ["firefox", "waterfox", "librewolf", "floorp", "zen"] as const;
+export type BrowserName = typeof SUPPORTED_BROWSERS[number];
+
 const firefoxConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(9222),
   host: z.string().min(1).default("127.0.0.1"),
   autoLaunch: z.boolean().default(false),
+  browser: z.enum(SUPPORTED_BROWSERS).default("firefox"),
   profilePath: z.string().optional(),
   firefoxArgs: z.array(z.string()).default([]),
   prefs: z.record(z.union([z.string(), z.number(), z.boolean()])).default({}),
@@ -62,6 +66,7 @@ const partialFirefoxSchema = z.object({
   port: z.number().int().min(1).max(65535).optional(),
   host: z.string().min(1).optional(),
   autoLaunch: z.boolean().optional(),
+  browser: z.enum(SUPPORTED_BROWSERS).optional(),
   profilePath: z.string().optional(),
   firefoxArgs: z.array(z.string()).optional(),
   prefs: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -193,6 +198,12 @@ function applyEnvOverrides(config: BrowserdConfig): BrowserdConfig {
   const host = process.env.FOXBROWSER_HOST;
   if (host !== undefined && host !== "") {
     result.firefox.host = host;
+  }
+
+  // FOXBROWSER_BROWSER -> firefox.browser
+  const browser = process.env.FOXBROWSER_BROWSER;
+  if (browser !== undefined && browser !== "") {
+    result.firefox.browser = browser as typeof SUPPORTED_BROWSERS[number];
   }
 
   // FOXBROWSER_PROFILE -> firefox.profilePath

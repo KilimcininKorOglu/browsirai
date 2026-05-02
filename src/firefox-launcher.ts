@@ -27,6 +27,8 @@ export interface ConnectOptions {
   headless?: boolean;
   /** Path to an existing Firefox profile directory */
   profilePath?: string;
+  /** Browser to use: firefox, waterfox, librewolf, floorp, zen */
+  browser?: string;
 }
 
 export interface ConnectResult {
@@ -98,56 +100,99 @@ function copyDirRecursive(src: string, dest: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Well-known Firefox paths per platform
+// Browser binary paths per browser and platform
 // ---------------------------------------------------------------------------
 
-const FIREFOX_PATHS: Record<string, string[]> = {
-  darwin: [
-    "/Applications/Firefox.app/Contents/MacOS/firefox",
-    "/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox",
-    "/Applications/Firefox Nightly.app/Contents/MacOS/firefox",
-  ],
-  linux: [
-    "firefox",
-    "firefox-esr",
-    "firefox-developer-edition",
-    "firefox-nightly",
-    "/usr/bin/firefox",
-    "/usr/lib/firefox/firefox",
-    "/usr/lib64/firefox/firefox",
-    "/snap/bin/firefox",
-    "/opt/firefox/firefox",
-    "/usr/lib/firefox-esr/firefox-esr",
-  ],
-  win32: [
-    "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
-    "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
-  ],
+const BROWSER_PATHS: Record<string, Record<string, string[]>> = {
+  firefox: {
+    darwin: [
+      "/Applications/Firefox.app/Contents/MacOS/firefox",
+      "/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox",
+      "/Applications/Firefox Nightly.app/Contents/MacOS/firefox",
+    ],
+    linux: [
+      "firefox", "firefox-esr", "firefox-developer-edition", "firefox-nightly",
+      "/usr/bin/firefox", "/usr/lib/firefox/firefox", "/usr/lib64/firefox/firefox",
+      "/snap/bin/firefox", "/opt/firefox/firefox", "/usr/lib/firefox-esr/firefox-esr",
+    ],
+    win32: [
+      "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+      "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
+    ],
+  },
+  waterfox: {
+    darwin: ["/Applications/Waterfox.app/Contents/MacOS/waterfox"],
+    linux: ["waterfox", "/usr/bin/waterfox"],
+    win32: ["C:\\Program Files\\Waterfox\\waterfox.exe"],
+  },
+  librewolf: {
+    darwin: ["/Applications/LibreWolf.app/Contents/MacOS/librewolf"],
+    linux: ["librewolf", "/usr/bin/librewolf"],
+    win32: ["C:\\Program Files\\LibreWolf\\librewolf.exe"],
+  },
+  floorp: {
+    darwin: ["/Applications/Floorp.app/Contents/MacOS/floorp"],
+    linux: ["floorp", "/usr/bin/floorp"],
+    win32: ["C:\\Program Files\\Floorp\\floorp.exe"],
+  },
+  zen: {
+    darwin: ["/Applications/Zen Browser.app/Contents/MacOS/zen"],
+    linux: ["zen-browser", "zen"],
+    win32: ["C:\\Program Files\\Zen Browser\\zen.exe"],
+  },
 };
 
 // ---------------------------------------------------------------------------
-// Default Firefox data directory per platform
+// Browser data directories per browser and platform
 // ---------------------------------------------------------------------------
 
-export function getDefaultFirefoxDataDir(): string {
+const BROWSER_DATA_DIRS: Record<string, Record<string, string>> = {
+  firefox:   { darwin: "Firefox",      linux: ".mozilla/firefox", win32: "Mozilla\\Firefox" },
+  waterfox:  { darwin: "Waterfox",     linux: ".waterfox",        win32: "Waterfox" },
+  librewolf: { darwin: "LibreWolf",    linux: ".librewolf",       win32: "LibreWolf" },
+  floorp:    { darwin: "Floorp",       linux: ".floorp",          win32: "Floorp" },
+  zen:       { darwin: "Zen Browser",  linux: ".zen",             win32: "Zen Browser" },
+};
+
+// ---------------------------------------------------------------------------
+// Browser process names for running detection
+// ---------------------------------------------------------------------------
+
+const BROWSER_PROCESS_NAMES: Record<string, { unix: string[]; win32: string }> = {
+  firefox:   { unix: ["firefox", "firefox-bin"], win32: "firefox.exe" },
+  waterfox:  { unix: ["waterfox"],               win32: "waterfox.exe" },
+  librewolf: { unix: ["librewolf"],              win32: "librewolf.exe" },
+  floorp:    { unix: ["floorp"],                 win32: "floorp.exe" },
+  zen:       { unix: ["zen", "zen-browser"],     win32: "zen.exe" },
+};
+
+export function getBrowserDataDir(browser: string = "firefox"): string {
   const home = homedir();
-  switch (process.platform) {
-    case "darwin":
-      return join(home, "Library", "Application Support", "Firefox");
-    case "win32":
-      return join(home, "AppData", "Roaming", "Mozilla", "Firefox");
-    default: // linux
-      return join(home, ".mozilla", "firefox");
+  const dirs = BROWSER_DATA_DIRS[browser] ?? BROWSER_DATA_DIRS.firefox;
+  const platform = process.platform;
+
+  if (platform === "darwin") {
+    return join(home, "Library", "Application Support", dirs.darwin);
   }
+  if (platform === "win32") {
+    return join(home, "AppData", "Roaming", dirs.win32);
+  }
+  return join(home, dirs.linux);
+}
+
+/** @deprecated Use getBrowserDataDir() instead */
+export function getDefaultFirefoxDataDir(): string {
+  return getBrowserDataDir("firefox");
 }
 
 // ---------------------------------------------------------------------------
 // Find Firefox
 // ---------------------------------------------------------------------------
 
-export function findFirefox(): string | null {
+export function findBrowser(browser: string = "firefox"): string | null {
   const platform = process.platform;
-  const candidates = FIREFOX_PATHS[platform] ?? [];
+  const browserPaths = BROWSER_PATHS[browser] ?? BROWSER_PATHS.firefox;
+  const candidates = browserPaths[platform] ?? [];
 
   for (const candidate of candidates) {
     if (candidate.startsWith("/") || platform === "darwin" || platform === "win32") {
@@ -164,6 +209,9 @@ export function findFirefox(): string | null {
   }
   return null;
 }
+
+/** @deprecated Use findBrowser() instead */
+export const findFirefox = findBrowser;
 
 // ---------------------------------------------------------------------------
 // Port check
@@ -218,18 +266,23 @@ function isProcessAlive(pid: number): boolean {
 /**
  * Checks if Firefox is currently running.
  */
-export function isFirefoxRunning(): boolean {
+export function isBrowserRunning(browser: string = "firefox"): boolean {
+  const names = BROWSER_PROCESS_NAMES[browser] ?? BROWSER_PROCESS_NAMES.firefox;
   try {
     if (process.platform === "win32") {
-      const r = execSync('tasklist /FI "IMAGENAME eq firefox.exe" /NH', { stdio: "pipe" }).toString();
-      return r.includes("firefox.exe");
+      const r = execSync(`tasklist /FI "IMAGENAME eq ${names.win32}" /NH`, { stdio: "pipe" }).toString();
+      return r.includes(names.win32);
     }
-    const r = execSync("pgrep -x firefox || pgrep -x 'firefox-bin'", { stdio: "pipe" }).toString().trim();
+    const pgrepCmds = names.unix.map(n => `pgrep -x '${n}'`).join(" || ");
+    const r = execSync(pgrepCmds, { stdio: "pipe" }).toString().trim();
     return r.length > 0;
   } catch {
     return false;
   }
 }
+
+/** @deprecated Use isBrowserRunning() instead */
+export const isFirefoxRunning = isBrowserRunning;
 
 /**
  * Quits the foxbrowser-launched Firefox process. Only kills the process
@@ -318,6 +371,7 @@ export async function launchFirefoxWithDebugging(
   headless = false,
   profilePath?: string,
   extraArgs?: string[],
+  browser: string = "firefox",
 ): Promise<LaunchResult> {
   const healthy = await isBiDiHealthy(port);
   if (healthy) {
@@ -331,12 +385,12 @@ export async function launchFirefoxWithDebugging(
     return { success: true, port: SEPARATE_PORT, wsEndpoint: ws };
   }
 
-  const firefoxPath = findFirefox();
-  if (!firefoxPath) {
-    return { success: false, port, error: "Firefox not found. Install Firefox and try again." };
+  const browserPath = findBrowser(browser);
+  if (!browserPath) {
+    return { success: false, port, error: `${browser} not found. Install ${browser} and try again.` };
   }
 
-  const usesSeparateInstance = isFirefoxRunning();
+  const usesSeparateInstance = isBrowserRunning(browser);
   const targetPort = usesSeparateInstance ? SEPARATE_PORT : port;
 
   let profileDir: string | undefined;
@@ -368,7 +422,7 @@ export async function launchFirefoxWithDebugging(
     args.push(...extraArgs);
   }
 
-  const child = spawn(firefoxPath, args, {
+  const child = spawn(browserPath, args, {
     detached: true,
     stdio: "ignore",
   });
@@ -408,15 +462,15 @@ export async function launchHeadlessFirefox(): Promise<LaunchResult> {
     return { success: true, port: HEADLESS_PORT, wsEndpoint: ws };
   }
 
-  const firefoxPath = findFirefox();
-  if (!firefoxPath) {
+  const browserPath = findBrowser();
+  if (!browserPath) {
     return { success: false, port: HEADLESS_PORT, error: "Firefox not found." };
   }
 
   const profileDir = join(tmpdir(), "foxbrowser-firefox-headless");
   mkdirSync(profileDir, { recursive: true });
 
-  const child = spawn(firefoxPath, [
+  const child = spawn(browserPath, [
     "--headless",
     `--remote-debugging-port=${HEADLESS_PORT}`,
     "--profile", profileDir,
@@ -467,7 +521,8 @@ export async function connectFirefox(options: ConnectOptions = {}): Promise<Conn
     const { loadConfig } = await import("./config.js");
     const cfg = loadConfig();
     const configArgs = cfg.firefox.firefoxArgs?.length ? cfg.firefox.firefoxArgs : undefined;
-    const launch = await launchFirefoxWithDebugging(targetPort, options.headless, options.profilePath, configArgs);
+    const browserName = options.browser ?? cfg.firefox.browser ?? "firefox";
+    const launch = await launchFirefoxWithDebugging(targetPort, options.headless, options.profilePath, configArgs, browserName);
     if (launch.success) {
       return {
         success: true,

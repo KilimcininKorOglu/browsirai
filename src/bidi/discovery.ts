@@ -165,7 +165,7 @@ export async function scanPorts(
 // OS-specific Firefox profile paths
 // ---------------------------------------------------------------------------
 
-type BrowserType = "firefox" | "firefox-developer" | "firefox-nightly";
+type BrowserType = "firefox" | "firefox-developer" | "firefox-nightly" | "waterfox" | "librewolf" | "floorp" | "zen";
 
 interface BrowserPathConfig {
   darwin: string;
@@ -188,6 +188,26 @@ const BROWSER_PROFILE_PATHS: Record<BrowserType, Partial<BrowserPathConfig>> = {
     darwin: "Library/Application Support/Firefox/Profiles",
     linux: ".mozilla/firefox",
     win32: "Mozilla\\Firefox\\Profiles",
+  },
+  waterfox: {
+    darwin: "Library/Application Support/Waterfox/Profiles",
+    linux: ".waterfox",
+    win32: "Waterfox\\Profiles",
+  },
+  librewolf: {
+    darwin: "Library/Application Support/LibreWolf/Profiles",
+    linux: ".librewolf",
+    win32: "LibreWolf\\Profiles",
+  },
+  floorp: {
+    darwin: "Library/Application Support/Floorp/Profiles",
+    linux: ".floorp",
+    win32: "Floorp\\Profiles",
+  },
+  zen: {
+    darwin: "Library/Application Support/Zen Browser/Profiles",
+    linux: ".zen",
+    win32: "Zen Browser\\Profiles",
   },
 };
 

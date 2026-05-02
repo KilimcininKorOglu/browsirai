@@ -7,7 +7,8 @@ import { detectPlatform, getInstallConfig } from "./adapters/detect.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { connectFirefox, getDefaultFirefoxDataDir } from "./firefox-launcher.js";
+import { connectFirefox, getBrowserDataDir } from "./firefox-launcher.js";
+import { SUPPORTED_BROWSERS } from "./config.js";
 
 import type { PlatformId } from "./adapters/types.js";
 
@@ -18,8 +19,8 @@ interface FirefoxProfile {
   isDefault: boolean;
 }
 
-function parseFirefoxProfiles(): FirefoxProfile[] {
-  const dataDir = getDefaultFirefoxDataDir();
+function parseBrowserProfiles(browser: string = "firefox"): FirefoxProfile[] {
+  const dataDir = getBrowserDataDir(browser);
   const iniPath = join(dataDir, "profiles.ini");
   if (!existsSync(iniPath)) return [];
 
@@ -187,8 +188,24 @@ export async function runInstall(): Promise<void> {
   const selectedPlatform = platform as PlatformId;
   const selectedScope = scope as string;
 
-  // Firefox profile selection
-  const profiles = parseFirefoxProfiles();
+  // Browser selection
+  const browserChoice = await select({
+    message: "Select browser:",
+    options: SUPPORTED_BROWSERS.map(b => ({
+      value: b,
+      label: b.charAt(0).toUpperCase() + b.slice(1),
+    })),
+  });
+
+  if (isCancel(browserChoice)) {
+    cancel("Installation cancelled.");
+    return;
+  }
+
+  const selectedBrowser = browserChoice as string;
+
+  // Browser profile selection
+  const profiles = parseBrowserProfiles(selectedBrowser);
   let selectedProfilePath: string | undefined;
 
   if (profiles.length > 0) {
@@ -219,9 +236,14 @@ export async function runInstall(): Promise<void> {
 
   // Build server entry with optional profile
   const serverEntry = { ...config.serverEntry } as Record<string, unknown>;
+  const env = (serverEntry.env ?? {}) as Record<string, string>;
+  if (selectedBrowser !== "firefox") {
+    env.FOXBROWSER_BROWSER = selectedBrowser;
+  }
   if (selectedProfilePath) {
-    const env = (serverEntry.env ?? {}) as Record<string, string>;
     env.FOXBROWSER_PROFILE = selectedProfilePath;
+  }
+  if (Object.keys(env).length > 0) {
     serverEntry.env = env;
   }
 
@@ -276,6 +298,7 @@ export async function runInstall(): Promise<void> {
   const connection = await connectFirefox({
     autoLaunch: true,
     profilePath: selectedProfilePath,
+    browser: selectedBrowser,
   });
   if (connection.success) {
     s.stop(connection.wsEndpoint

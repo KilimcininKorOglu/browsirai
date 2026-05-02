@@ -2626,14 +2626,18 @@ describe("Install Command (src/install.ts)", () => {
     vi.doMock("../src/firefox-launcher", () => ({
       connectFirefox: vi.fn().mockResolvedValue({ success: false, port: 9222, error: "mocked" }),
       findFirefox: vi.fn().mockReturnValue(null),
+      findBrowser: vi.fn().mockReturnValue(null),
       isPortReachable: vi.fn().mockResolvedValue(false),
       getDefaultFirefoxDataDir: vi.fn().mockReturnValue("/tmp/foxbrowser-test"),
+      getBrowserDataDir: vi.fn().mockReturnValue("/tmp/foxbrowser-test"),
     }));
     vi.doMock("../src/firefox-launcher.js", () => ({
       connectFirefox: vi.fn().mockResolvedValue({ success: false, port: 9222, error: "mocked" }),
       findFirefox: vi.fn().mockReturnValue(null),
+      findBrowser: vi.fn().mockReturnValue(null),
       isPortReachable: vi.fn().mockResolvedValue(false),
       getDefaultFirefoxDataDir: vi.fn().mockReturnValue("/tmp/foxbrowser-test"),
+      getBrowserDataDir: vi.fn().mockReturnValue("/tmp/foxbrowser-test"),
     }));
 
     const mod = await import("../src/install");
@@ -2649,6 +2653,7 @@ describe("Install Command (src/install.ts)", () => {
     it("should auto-detect platform and show it as default", async () => {
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2664,6 +2669,7 @@ describe("Install Command (src/install.ts)", () => {
     it("should present all supported platforms in select prompt", async () => {
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2684,11 +2690,12 @@ describe("Install Command (src/install.ts)", () => {
     it("should present scope options (project, global)", async () => {
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
-      // Second select call should be scope selection
-      expect(mockSelect).toHaveBeenCalledTimes(2);
+      // select called 3 times: platform, scope, browser
+      expect(mockSelect).toHaveBeenCalledTimes(3);
       const scopeCall = mockSelect.mock.calls[1]![0] as {
         options: Array<{ value: string }>;
       };
@@ -2702,6 +2709,7 @@ describe("Install Command (src/install.ts)", () => {
     it("should generate correct config JSON for claude-code", async () => {
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2722,6 +2730,7 @@ describe("Install Command (src/install.ts)", () => {
       });
       mockSelect.mockResolvedValueOnce("cursor");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2741,6 +2750,7 @@ describe("Install Command (src/install.ts)", () => {
       });
       mockSelect.mockResolvedValueOnce("gemini-cli");
       mockSelect.mockResolvedValueOnce("global");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2760,6 +2770,7 @@ describe("Install Command (src/install.ts)", () => {
       });
       mockSelect.mockResolvedValueOnce("vscode-copilot");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2781,6 +2792,7 @@ describe("Install Command (src/install.ts)", () => {
       });
       mockSelect.mockResolvedValueOnce("opencode");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2800,6 +2812,7 @@ describe("Install Command (src/install.ts)", () => {
       });
       mockSelect.mockResolvedValueOnce("zed");
       mockSelect.mockResolvedValueOnce("global");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2814,6 +2827,7 @@ describe("Install Command (src/install.ts)", () => {
     it("should write config to correct file path for project scope", async () => {
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2832,6 +2846,7 @@ describe("Install Command (src/install.ts)", () => {
       });
       mockSelect.mockResolvedValueOnce("gemini-cli");
       mockSelect.mockResolvedValueOnce("global");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 
@@ -2860,6 +2875,7 @@ describe("Install Command (src/install.ts)", () => {
       );
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
       mockConfirm.mockResolvedValueOnce(false); // User says no to overwrite
 
       await runInstall();
@@ -2880,6 +2896,7 @@ describe("Install Command (src/install.ts)", () => {
       mockReadFileSync.mockReturnValue(JSON.stringify(existingConfig));
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
       mockConfirm.mockResolvedValueOnce(true); // User confirms merge
 
       await runInstall();
@@ -2897,6 +2914,7 @@ describe("Install Command (src/install.ts)", () => {
     it("should show success message with file path after install", async () => {
       mockSelect.mockResolvedValueOnce("claude-code");
       mockSelect.mockResolvedValueOnce("project");
+      mockSelect.mockResolvedValueOnce("firefox");
 
       await runInstall();
 

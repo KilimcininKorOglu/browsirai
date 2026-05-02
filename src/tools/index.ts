@@ -47,6 +47,7 @@ import { browserSaveState, browserLoadState } from "./browser-session-state.js";
 let bidiConnection: BiDiConnection | null = null;
 
 let headlessMode = process.env.FOXBROWSER_HEADLESS === "1" || process.env.FOXBROWSER_HEADLESS === "true";
+let connectBrowser: string | undefined;
 let connectProfilePath: string | undefined;
 let connectAcceptInsecureCerts = false;
 
@@ -95,6 +96,7 @@ async function getBiDi(): Promise<BiDiConnection> {
   const connection = await connectFirefox({
     autoLaunch: true,
     profilePath: connectProfilePath,
+    browser: connectBrowser,
   });
 
   if (!connection.success) {
@@ -608,6 +610,7 @@ const toolShapes: Record<string, Record<string, z.ZodType>> = {
     port: cNum.optional(),
     host: z.string().optional(),
     headless: cBool.optional(),
+    browser: z.enum(["firefox", "waterfox", "librewolf", "floorp", "zen"]).optional(),
     profilePath: z.string().optional(),
     acceptInsecureCerts: cBool.optional(),
   },
@@ -802,11 +805,13 @@ function createHandlers(): Record<string, ToolHandler> {
       try {
         const typed = args as {
           headless?: boolean;
+          browser?: string;
           profilePath?: string;
           acceptInsecureCerts?: boolean;
         };
         const wasHeadless = headlessMode;
         headlessMode = typed.headless === true;
+        connectBrowser = typed.browser;
         connectProfilePath = typed.profilePath;
         connectAcceptInsecureCerts = typed.acceptInsecureCerts === true;
         if (wasHeadless !== headlessMode && bidiConnection?.isConnected) {
