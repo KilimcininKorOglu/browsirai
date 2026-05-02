@@ -27,7 +27,7 @@ firefox --remote-debugging-port=9222
 "C:\Program Files\Mozilla Firefox\firefox.exe" --remote-debugging-port=9222
 ```
 
-browsirai auto-launches Firefox if not already running with debugging enabled. If Firefox is running without debugging, a separate instance is launched on port 9444 with a temporary profile.
+foxbrowser auto-launches Firefox if not already running with debugging enabled. If Firefox is running without debugging, a separate instance is launched on port 9444 with a temporary profile.
 
 ## Quick Start
 
@@ -539,7 +539,7 @@ browser_list
 
 #### `browser_close`
 
-Close browser tabs. When `closeAll` is used, the browsirai-launched Firefox process is also terminated.
+Close browser tabs. When `closeAll` is used, the foxbrowser-launched Firefox process is also terminated.
 
 ```
 browser_close
