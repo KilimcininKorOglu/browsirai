@@ -27,16 +27,15 @@ firefox --remote-debugging-port=9222
 "C:\Program Files\Mozilla Firefox\firefox.exe" --remote-debugging-port=9222
 ```
 
-foxbrowser auto-launches Firefox if not already running with debugging enabled. If Firefox is running without debugging, a **separate instance** is launched on port 9444 with a temporary profile.
+foxbrowser auto-launches Firefox with remote debugging if not already running.
 
 ### Process Safety
 
-foxbrowser **never** touches the user's personal Firefox session:
+**Never** close or kill the user's Firefox processes:
 
-- If the user's Firefox is already running, foxbrowser launches a **separate** isolated instance with `--no-remote` and a temporary profile
-- `browser_close { "closeAll": true }` only terminates the foxbrowser-launched instance (tracked by PID)
-- **Never** use `pkill firefox`, `killall firefox`, or any process-killing command -- this would kill the user's personal browser and all their open tabs
-- To stop foxbrowser's Firefox, always use `browser_close { "force": true, "closeAll": true }`
+- **Never** use `pkill firefox`, `killall firefox`, `taskkill`, or any process-killing command
+- This would destroy the user's personal browser session, open tabs, and unsaved work
+- To close foxbrowser's own tabs, use `browser_close { "force": true }`
 
 ## Quick Start
 
