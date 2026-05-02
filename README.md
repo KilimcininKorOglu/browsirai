@@ -34,12 +34,6 @@ Interactive installer that auto-detects your AI platform, lets you choose your b
 <details>
 <summary><strong>Claude Code</strong></summary>
 
-CLI:
-```bash
-claude mcp add foxbrowser npx -- -y foxbrowser
-```
-
-Or add to `.mcp.json`:
 ```json
 {
   "mcpServers": {
