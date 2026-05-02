@@ -166,11 +166,14 @@ function errorResult(msg: string) {
 // SKILL injection (on connect) & per-tool hints
 // ---------------------------------------------------------------------------
 
-const SKILL_SUMMARY = `Connected to Firefox via WebDriver BiDi.
+function buildSkillSummary(browser: string, mode: string): string {
+  const name = browser.charAt(0).toUpperCase() + browser.slice(1);
+  return `Connected to ${name} via WebDriver BiDi${mode}.
 Cost: evaluate (~10 tok) < snapshot (~500 tok) < screenshot (~10K tok).
 Workflow: snapshot → @eN ref → click/fill/hover → snapshot.
 Identity: use browser session cookies, never guess usernames.
 Refs become stale after navigation — re-snapshot when needed.`;
+}
 
 const toolHints: Record<string, string> = {
   browser_navigate: " [refs stale]",
@@ -760,7 +763,8 @@ function createHandlers(): Record<string, ToolHandler> {
         }
         await getBiDi();
         const mode = headlessMode ? " (headless)" : "";
-        let summary = SKILL_SUMMARY.replace("Connected to Firefox via WebDriver BiDi.", `Connected to Firefox via WebDriver BiDi${mode}.`);
+        const browserName = connectBrowser ?? "firefox";
+        let summary = buildSkillSummary(browserName, mode);
 
         // Append upgrade notice if a newer version is available
         try {
