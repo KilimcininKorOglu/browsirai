@@ -167,75 +167,15 @@ function errorResult(msg: string) {
 // ---------------------------------------------------------------------------
 
 const SKILL_SUMMARY = `Connected to Firefox via WebDriver BiDi.
-
-## foxbrowser — Quick Reference
-
-**Cost hierarchy (cheapest first):**
-1. \`browser_evaluate\` — JS expression for single values (~10 tokens). Use when you need one data point (count, text, attribute).
-2. \`browser_snapshot\` — accessibility tree with @eN refs (~500 tokens). Use for page understanding and interaction.
-3. \`browser_screenshot { visual: true }\` — full image (~10K tokens). ONLY for layout/colors/visual bugs.
-
-**Core workflow: snapshot → ref → interact → snapshot**
-
-1. \`browser_snapshot\` — get accessibility tree with @eN refs
-2. Use @eN refs with: \`browser_click\`, \`browser_fill_form\`, \`browser_hover\`, \`browser_type\`, \`browser_select_option\`, \`browser_drag\`, \`browser_inspect_source\`
-3. \`browser_snapshot\` — verify result (ALWAYS use this)
-
-**Cost optimization (enforced server-side):**
-- \`browser_screenshot\` without \`visual: true\` auto-returns snapshot text
-- For single data extraction: \`browser_evaluate\` > \`browser_snapshot\` (50x cheaper)
-- Reserve \`browser_screenshot { visual: true }\` for CSS/layout debugging only
-
-**Identity resolution (cookie-based, always-first):**
-- NEVER guess usernames. The browser has an active session — use it.
-- To find the logged-in user: \`browser_evaluate\` on the site (e.g. GitHub avatar menu, X profile link).
-- When asked "go to my profile/repo/account" → navigate to the site root first, extract identity from session, then proceed.
-- Cookie sync means the browser IS the user. Trust the session, not assumptions.
-
-**Key patterns:**
-- \`browser_fill_form\` clears existing value. Use \`browser_type\` to append.
-- \`browser_type\` with \`submit: true\` presses Enter after typing.
-- \`browser_wait_for\` — wait for text, selector, URL, or JS condition before proceeding.
-- \`browser_inspect_source\` — find source file, line, component name (React/Vue/Svelte, dev mode only).
-- \`browser_resize\` with \`preset: "reset"\` — restore native viewport.
-- Refs become stale after navigation or major DOM changes — take a new snapshot.
-- \`browser_evaluate\` cannot access cross-origin iframes — use \`browser_type\` instead.
-- \`browser_console_messages\` / \`browser_network_requests\` — check for errors after interactions.`;
+Cost: evaluate (~10 tok) < snapshot (~500 tok) < screenshot (~10K tok).
+Workflow: snapshot → @eN ref → click/fill/hover → snapshot.
+Identity: use browser session cookies, never guess usernames.
+Refs become stale after navigation — re-snapshot when needed.`;
 
 const toolHints: Record<string, string> = {
-  browser_navigate: "\n\n→ Next: browser_evaluate for quick data extraction (~10 tokens), or browser_snapshot for page structure and @eN refs (~500 tokens).",
-  browser_navigate_back: "\n\n→ Next: browser_snapshot to see updated page.",
-  browser_snapshot: "\n\n→ Next: Use @eN refs with browser_click, browser_fill_form, browser_hover, browser_type, browser_select_option, browser_drag, or browser_inspect_source.",
-  browser_screenshot: "\n\n→ Cost: This call was auto-optimized to snapshot text. For full image, pass { visual: true }. Prefer browser_snapshot (~500 tokens) over browser_screenshot (~10K tokens).",
-  browser_annotated_screenshot: "\n\n→ Cost: ~12K tokens. Consider browser_snapshot { interactive: true } (~500 tokens) for same info as text.",
-  browser_click: "\n\n→ Next: browser_snapshot to verify result. Refs may be stale after DOM changes.",
-  browser_fill_form: "\n\n→ Next: browser_snapshot to verify. Note: fill_form clears existing value first.",
-  browser_type: "\n\n→ Tip: Use submit: true to press Enter. Does NOT clear existing value (unlike fill_form).",
-  browser_press_key: "\n\n→ Next: browser_snapshot to verify effect.",
-  browser_hover: "\n\n→ Next: browser_snapshot to verify hover state. Use browser_screenshot { visual: true } only for visual hover effects.",
-  browser_drag: "\n\n→ Next: browser_snapshot to verify drag result.",
-  browser_scroll: "\n\n→ Next: browser_snapshot to see new viewport content.",
-  browser_select_option: "\n\n→ Next: browser_snapshot to verify selection.",
-  browser_handle_dialog: "\n\n→ Next: browser_snapshot to see page state after dialog.",
-  browser_file_upload: "\n\n→ Next: browser_snapshot to verify upload.",
-  browser_wait_for: "\n\n→ Next: browser_snapshot to see current page state.",
-  browser_resize: "\n\n→ Next: browser_snapshot to verify viewport. Use browser_screenshot { visual: true } only to check visual layout. Use preset: \"reset\" to restore.",
-  browser_close: "\n\n→ Next: browser_tabs to see remaining tabs.",
-  browser_evaluate: "\n\n→ Tip: Cheapest tool (~10 tokens). Use for single data extraction (counts, text, attributes). Prefer browser_snapshot + @eN refs for DOM interaction. Cannot access cross-origin iframes.",
-  browser_html: "\n\n→ Tip: Prefer browser_snapshot for structured page understanding with @eN refs.",
-  browser_tabs: "\n\n→ Tip: Use browser_navigate to open a URL in current tab.",
-  browser_console_messages: "\n\n→ Tip: Use level: \"error\" to filter for errors only.",
-  browser_network_requests: "\n\n→ Tip: Use filter: \"*api*\" and includeStatic: false for API calls only.",
-  browser_inspect_source: "\n\n→ Tip: Dev mode only. Use browser_snapshot first to get @eN refs for specific elements.",
-  browser_route: "\n\n→ Tip: Use browser_network_requests to verify intercepted responses. Use browser_unroute to remove.",
-  browser_abort: "\n\n→ Tip: Use browser_network_requests to verify blocked requests. Use browser_unroute to remove.",
-  browser_unroute: "\n\n→ Tip: Use {all: true} to clear all intercepts at once.",
-  browser_find: "\n\n→ Next: Use the @eN ref with browser_click, browser_fill_form, browser_hover, or browser_inspect_source.",
-  browser_diff: "\n\n→ Tip: Use 'current' as before value to capture the page now. Make changes, then call again with the first result as before.",
-  browser_save_state: "\n\n→ Tip: State saved to ~/.foxbrowser/states/. Use browser_load_state to restore later.",
-  browser_load_state: "\n\n→ Next: browser_snapshot to see the restored page state.",
-  browser_connect: "", // SKILL_SUMMARY is returned directly
-  browser_list: "\n\n→ Tip: Use browser_connect to connect to a specific instance.",
+  browser_navigate: " [refs stale]",
+  browser_navigate_back: " [refs stale]",
+  browser_screenshot: " [snapshot mode]",
 };
 
 function appendHint(result: ToolResult, toolName: string): ToolResult {
@@ -700,7 +640,7 @@ function createHandlers(): Record<string, ToolHandler> {
         if (!needsImage) {
           const snap = await browserSnapshot(conn, {});
           const text = typeof snap === "string" ? snap : (snap as any).snapshot ?? JSON.stringify(snap, null, 2);
-          return textResult(`[auto-optimized: snapshot returned — pass visual: true for image]\n\n${text}`);
+          return textResult(text);
         }
         const result = await browserScreenshot(conn, args as any);
         const mimeType = (args.format === "jpeg") ? "image/jpeg" : "image/png";
@@ -818,7 +758,7 @@ function createHandlers(): Record<string, ToolHandler> {
           bidiConnection.close();
           bidiConnection = null;
         }
-        const conn = await getBiDi();
+        await getBiDi();
         const mode = headlessMode ? " (headless)" : "";
         let summary = SKILL_SUMMARY.replace("Connected to Firefox via WebDriver BiDi.", `Connected to Firefox via WebDriver BiDi${mode}.`);
 
