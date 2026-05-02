@@ -577,6 +577,7 @@ const toolShapes: Record<string, Record<string, z.ZodType>> = {
   browser_click: {
     selector: z.string().optional(),
     ref: z.string().optional(),
+    text: z.string().optional(),
     x: cNum.optional(),
     y: cNum.optional(),
     newTab: cBool.optional(),

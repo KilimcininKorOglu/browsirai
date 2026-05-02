@@ -88,6 +88,24 @@ export async function browserType(
     });
   }
 
+  // Verify text was typed — fallback for React-controlled inputs
+  const escaped = JSON.stringify(params.text);
+  await bidi.send("script.evaluate", {
+    expression: `(() => {
+      const el = document.activeElement;
+      if (!el || el.value?.includes(${escaped})) return;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      if (setter) {
+        setter.call(el, (el.value || '') + ${escaped});
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    })()`,
+    awaitPromise: false,
+    resultOwnership: "none",
+  });
+
   // Submit: press Enter
   if (params.submit) {
     await bidi.send("input.performActions", {

@@ -96,6 +96,24 @@ async function fillTextbox(bidi: BiDiConnection, field: FillFormField): Promise<
       actions: keyActions,
     }],
   });
+
+  // Verify value was set — fallback for React-controlled inputs
+  const escaped = JSON.stringify(field.value);
+  await bidi.send("script.evaluate", {
+    expression: `(() => {
+      const el = document.activeElement;
+      if (!el || el.value === ${escaped}) return;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      if (setter) {
+        setter.call(el, ${escaped});
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    })()`,
+    awaitPromise: false,
+    resultOwnership: "none",
+  });
 }
 
 async function clickField(bidi: BiDiConnection, field: FillFormField): Promise<void> {
@@ -107,14 +125,15 @@ async function clickField(bidi: BiDiConnection, field: FillFormField): Promise<v
       if (!el) return null;
       el.scrollIntoView({block:'center'});
       const r = el.getBoundingClientRect();
-      return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};
+      return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),w:r.width,h:r.height};
     })()`,
     awaitPromise: false,
     resultOwnership: "none",
-  })) as { result: { value?: { x: number; y: number } } };
+  })) as { result: { value?: { x: number; y: number; w: number; h: number } } };
 
   const coords = response.result?.value;
   if (!coords) throw new Error(`Element not found for field: ${field.name}`);
+  if (coords.w === 0 && coords.h === 0) throw new Error(`Element is not visible: zero-size box model.`);
 
   await bidi.send("input.performActions", {
     actions: [{

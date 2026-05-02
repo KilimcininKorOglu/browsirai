@@ -30,7 +30,7 @@ async function resolveElementCoordinates(
     jsExpression = `(() => {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
       let count = 0; let node = walker.currentNode;
-      while (node) { count++; if (count === ${nodeId}) { node.scrollIntoView({block:'center',inline:'center'}); const r = node.getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; } node = walker.nextNode(); if(!node) break; }
+      while (node) { count++; if (count === ${nodeId}) { node.scrollIntoView({block:'center',inline:'center'}); const r = node.getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),w:r.width,h:r.height}; } node = walker.nextNode(); if(!node) break; }
       return null;
     })()`;
   } else if (params.selector) {
@@ -40,7 +40,7 @@ async function resolveElementCoordinates(
       if (!el) return null;
       el.scrollIntoView({block:'center',inline:'center'});
       const r = el.getBoundingClientRect();
-      return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};
+      return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),w:r.width,h:r.height};
     })()`;
   } else {
     throw new Error("Either ref or selector must be provided");
@@ -50,10 +50,11 @@ async function resolveElementCoordinates(
     expression: jsExpression,
     awaitPromise: false,
     resultOwnership: "none",
-  })) as { result: { type: string; value?: { x: number; y: number } } };
+  })) as { result: { type: string; value?: { x: number; y: number; w: number; h: number } } };
 
   const val = response.result?.value;
   if (!val) throw new Error(params.ref ? `Element not found for ref: ${params.ref}` : `Element not found: no element matches selector "${params.selector}"`);
+  if (val.w === 0 && val.h === 0) throw new Error("Element is not visible: zero-size box model.");
 
   return val;
 }

@@ -19,6 +19,7 @@ import type { BiDiConnection } from "../bidi/connection.js";
 export interface ClickParams {
   ref?: string;
   selector?: string;
+  text?: string;
   element?: string;
   x?: number;
   y?: number;
@@ -63,8 +64,23 @@ async function resolveElementCoordinates(
       const r = el.getBoundingClientRect();
       return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),w:r.width,h:r.height};
     })()`;
+  } else if (params.text) {
+    const text = JSON.stringify(params.text);
+    jsExpression = `(() => {
+      for (const el of document.querySelectorAll('*')) {
+        if (!el.children.length && el.textContent?.trim().includes(${text})) {
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            el.scrollIntoView({block:'center',inline:'center'});
+            const r2 = el.getBoundingClientRect();
+            return {x:Math.round(r2.x+r2.width/2),y:Math.round(r2.y+r2.height/2),w:r2.width,h:r2.height};
+          }
+        }
+      }
+      return null;
+    })()`;
   } else {
-    throw new Error("Either ref, selector, or coordinates (x, y) must be provided");
+    throw new Error("Either ref, selector, text, or coordinates (x, y) must be provided");
   }
 
   const response = (await bidi.send("script.evaluate", {
