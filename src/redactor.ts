@@ -63,6 +63,11 @@ const SENSITIVE_BODY_KEYS = new Set([
   "clientsecret",
   "private_key",
   "privatekey",
+  "code",
+  "id_token",
+  "assertion",
+  "sig",
+  "signature",
 ]);
 
 const JWT_PATTERN =
