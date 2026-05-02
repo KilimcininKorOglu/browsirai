@@ -289,7 +289,7 @@ foxbrowser snapshot -i
 
 | Tool                    | What it does                                                                   | ~Tokens |
 |-------------------------|--------------------------------------------------------------------------------|--------:|
-| `browser_click`         | Click by `@eN` ref, CSS selector, or x/y coordinates. `newTab` support.        |     ~10 |
+| `browser_click`         | Click by `@eN` ref, CSS selector, visible text, or x/y coordinates.            |     ~10 |
 | `browser_fill_form`     | Clear + type into a field. Handles textbox, checkbox, radio, combobox, slider. |     ~10 |
 | `browser_type`          | Type text (appends, doesn't clear). `slowly` mode for key-event listeners.     |     ~10 |
 | `browser_press_key`     | Press key or combination (`Control+c`, `Meta+a`, `Enter`, `Escape`).           |     ~10 |
