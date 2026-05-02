@@ -323,21 +323,23 @@ browser_diff { "before": "current", "selector": "#hero", "threshold": 50 }
 
 #### `browser_click`
 
-Click an element. Supports three targeting methods: ref, selector, or coordinates.
+Click an element. Supports four targeting methods: ref, selector, text, or coordinates.
 
 ```
 browser_click { "ref": "@e5" }
 browser_click { "selector": "#submit-btn" }
+browser_click { "text": "Sign in" }
 browser_click { "x": 150, "y": 300 }
 browser_click { "ref": "@e2", "newTab": true }
 ```
 
-| Param    | Type    | Description                                   |
-| -------- | ------- | --------------------------------------------- |
-| `ref`    | string  | `@eN` ref from snapshot                       |
-| `selector` | string | CSS selector                                 |
-| `x`, `y` | number | CSS pixel coordinates                         |
-| `newTab` | boolean | Open link in new tab (adds Meta/Ctrl modifier) |
+| Param    | Type    | Description                                       |
+| -------- | ------- | ------------------------------------------------- |
+| `ref`    | string  | `@eN` ref from snapshot                           |
+| `selector` | string | CSS selector                                     |
+| `text`   | string  | Click first visible element containing this text  |
+| `x`, `y` | number | CSS pixel coordinates                             |
+| `newTab` | boolean | Open link in new tab (adds Meta/Ctrl modifier)    |
 
 #### `browser_fill_form`
 
