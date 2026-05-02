@@ -47,12 +47,16 @@ const SENSITIVE_BODY_KEYS = new Set([
   "secret",
   "token",
   "api_key",
-  "apiKey",
+  "apikey",
   "api-key",
   "access_token",
+  "accesstoken",
   "refresh_token",
+  "refreshtoken",
   "client_secret",
+  "clientsecret",
   "private_key",
+  "privatekey",
 ]);
 
 const JWT_PATTERN =
@@ -101,7 +105,7 @@ function redactObjectKeys(obj: unknown): unknown {
 
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (SENSITIVE_BODY_KEYS.has(key)) {
+    if (SENSITIVE_BODY_KEYS.has(key.toLowerCase())) {
       result[key] = REDACTED;
     } else if (typeof value === "object" && value !== null) {
       result[key] = redactObjectKeys(value);
