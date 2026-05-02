@@ -249,6 +249,7 @@ foxbrowser snapshot -i
 | **Insecure Certs**      | Accept self-signed TLS certificates with `ACCEPT_INSECURE_CERTS=true` for local development.               |
 | **Auto-Upgrade**        | Checks npm registry on server start. Background upgrade applies on next restart.                            |
 | **Cost Optimization**   | `browser_screenshot` auto-returns text snapshot (~500 tokens) unless `visual: true` (~10K tokens).          |
+| **Minimal Overhead**    | No per-tool hints or verbose tips in responses. Connect summary is 5 lines (~40 tokens, not ~800).          |
 
 ## Tools (35)
 
@@ -354,6 +355,8 @@ browser_screenshot  ~10K tokens    Visual (opt-in)
 ```
 
 `browser_screenshot` without `visual: true` auto-returns a text snapshot. The LLM gets the same information at 1/20th the cost.
+
+Tool responses contain zero verbose hints or tips -- only the data requested. The connect summary is 5 lines (~40 tokens) instead of a full reference document (~800 tokens). Over a 50-call session, this saves ~2500 tokens of overhead.
 
 | Scenario                  | Screenshot-default tool |       foxbrowser |
 |---------------------------|------------------------:|-----------------:|
