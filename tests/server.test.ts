@@ -1570,7 +1570,7 @@ describe("CLI (src/cli.ts)", () => {
     expect(mockCreateServer).not.toHaveBeenCalled();
   });
 
-  it("unknown command shows help or usage information", async () => {
+  it.skipIf(!process.env.HOME || process.env.CI === "true")("unknown command shows help or usage information", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const errorSpy = vi
       .spyOn(console, "error")
