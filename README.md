@@ -13,6 +13,8 @@ An MCP server + CLI that connects AI coding agents to Firefox via WebDriver BiDi
 
 - **Credentials never reach the LLM** — Cookie values are managed at the browser level via BiDi storage commands. They never enter the MCP message stream, never reach the model context, never leave your machine.
 
+- **Use your real browser sessions** — Automatically copies your Firefox profile (cookies, logins, certificates) even while your personal Firefox is running. No manual setup, no browser restart.
+
 - **No extra browser to install** — Uses your existing Firefox installation. No separate binary downloads.
 
 - **20x cheaper than screenshot-default tools** — Server-side snapshot redirection returns ~500 tokens instead of ~10K per interaction. 50 interactions/day: 25K tokens vs 500K.
@@ -232,7 +234,7 @@ foxbrowser snapshot -i
 |-------------------------|-------------------------------------------------------------------------------------------------------------|
 | **WebDriver BiDi**      | W3C standard protocol. Cross-browser compatible, future-proof.                                              |
 | **Daemon Architecture** | MCP server survives browser crashes. Auto-reconnects on next `browser_connect`.                             |
-| **Profile Support**     | Use your existing Firefox profile with `FOXBROWSER_PROFILE` or `profilePath`. Access saved logins/cookies.  |
+| **Profile Copy**        | Auto-copies locked Firefox profiles. Access your logins/cookies without closing your personal browser.      |
 | **Skill Injection**     | On every connect, injects workflow hints, cost hierarchy, and identity resolution rules into agent context. |
 | **EventBuffer Capture** | Server-side BiDi event listeners. Network requests and console messages survive page navigations.           |
 | **Source Inspection**   | Maps DOM elements to source code: React (Fiber tree + jsxDEV), Vue (`__file`), Svelte (`__svelte_meta`).    |
@@ -455,7 +457,8 @@ To access your logged-in sessions, cookies, and saved passwords:
 
 1. Find your profile path: open `about:profiles` in Firefox
 2. Set `FOXBROWSER_PROFILE` to the profile's root directory
-3. Firefox must not be running with that profile (or use a separate profile copy)
+
+foxbrowser automatically detects if the profile is locked by your running Firefox and copies the essential files (cookies, logins, certificates, storage) to a temp directory. Your personal Firefox stays untouched.
 
 Alternatively, launch Firefox with remote debugging enabled to connect directly:
 
@@ -469,7 +472,8 @@ foxbrowser will auto-detect and connect to it without launching a new instance.
 
 foxbrowser never touches your personal Firefox session:
 
-- If your Firefox is already running, foxbrowser launches a separate instance with a temporary profile
+- If your Firefox is already running, foxbrowser launches a separate instance
+- When `profilePath` is set and the profile is locked, foxbrowser copies cookies/logins to a temp directory instead of interfering with the running Firefox
 - `browser_close` only affects foxbrowser's own tabs and instances
 - **Never** use `pkill firefox` or `killall firefox` -- this kills all Firefox processes including your personal browser
 
@@ -551,7 +555,7 @@ Set the profile path via environment variable or config:
 FOXBROWSER_PROFILE="/path/to/firefox/profile" npx foxbrowser
 ```
 
-Or pass it as a tool parameter: `browser_connect { "profilePath": "/path/to/profile" }`. Find your profile path at `about:profiles` in Firefox.
+Or pass it as a tool parameter: `browser_connect { "profilePath": "/path/to/profile" }`. Find your profile path at `about:profiles` in Firefox. If the profile is locked by your running Firefox, foxbrowser automatically copies cookies and logins to a temp directory -- no need to close your browser.
 </details>
 
 <details>
@@ -563,7 +567,7 @@ Yes, if Firefox was launched with `--remote-debugging-port=9222`. foxbrowser wil
 <details>
 <summary><strong>Why does foxbrowser launch a new Firefox instead of using mine?</strong></summary>
 
-Firefox requires the `--remote-debugging-port` flag at startup to enable the WebDriver BiDi protocol. This cannot be toggled on a running Firefox. To use your existing sessions, either launch Firefox with the flag or set `FOXBROWSER_PROFILE` to your profile path so foxbrowser opens a new instance with your profile data.
+Firefox requires the `--remote-debugging-port` flag at startup to enable the WebDriver BiDi protocol. This cannot be toggled on a running Firefox. Set `FOXBROWSER_PROFILE` to your profile path -- foxbrowser will automatically copy your cookies and logins to a temp directory and launch a separate instance. Your personal Firefox stays open and untouched.
 </details>
 
 <details>
