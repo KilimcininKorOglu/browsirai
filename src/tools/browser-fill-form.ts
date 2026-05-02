@@ -52,21 +52,36 @@ function resolveElementScript(field: FillFormField): string {
 async function fillTextbox(bidi: BiDiConnection, field: FillFormField): Promise<void> {
   const elScript = resolveElementScript(field);
 
-  // Focus and clear existing value, then select all for overwrite
+  // Focus the element
   await bidi.send("script.evaluate", {
     expression: `(() => {
       const el = ${elScript};
       if (!el) throw new Error('Element not found');
       if (el.readOnly || el.disabled) throw new Error('Cannot fill readonly or disabled field');
       el.focus();
-      el.value = '';
-      el.dispatchEvent(new Event('input', { bubbles: true }));
     })()`,
     awaitPromise: false,
     resultOwnership: "none",
   });
 
-  // Type via real key events so SPA frameworks detect the input
+  // Select all existing text with Ctrl+A, then delete with Backspace
+  const ctrlKey = process.platform === "darwin" ? "" : "";
+  await bidi.send("input.performActions", {
+    actions: [{
+      type: "key",
+      id: "keyboard",
+      actions: [
+        { type: "keyDown", value: ctrlKey },
+        { type: "keyDown", value: "a" },
+        { type: "keyUp", value: "a" },
+        { type: "keyUp", value: ctrlKey },
+        { type: "keyDown", value: "" },
+        { type: "keyUp", value: "" },
+      ],
+    }],
+  });
+
+  // Type new value via real key events
   const keyActions: unknown[] = [];
   for (const char of field.value) {
     keyActions.push(

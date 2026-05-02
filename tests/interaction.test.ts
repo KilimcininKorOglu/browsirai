@@ -776,7 +776,7 @@ describe("browser_fill_form", () => {
     expect(evalCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("should dispatch input and change events after filling textbox", async () => {
+  it("should clear existing text with Ctrl+A+Backspace before typing", async () => {
     await browserFillForm(cdp as never, {
       fields: [
         {
@@ -788,13 +788,9 @@ describe("browser_fill_form", () => {
       ],
     });
 
-    // The tool dispatches events via script.evaluate (second call with dispatchEvent)
-    const evalCalls = cdp._getCalls("script.evaluate");
-    const dispatchCall = evalCalls.find((c) => {
-      const expr = (c.params as { expression: string }).expression;
-      return expr.includes("dispatchEvent") && (expr.includes("input") || expr.includes("change"));
-    });
-    expect(dispatchCall).toBeDefined();
+    // Should have two input.performActions calls: clear (Ctrl+A+Backspace) + type
+    const actionCalls = cdp._getCalls("input.performActions");
+    expect(actionCalls).toHaveLength(2);
   });
 });
 
