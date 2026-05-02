@@ -27,8 +27,6 @@ export interface ConnectOptions {
   headless?: boolean;
   /** Path to an existing Firefox profile directory */
   profilePath?: string;
-  /** Extra command-line arguments to pass to Firefox */
-  firefoxArgs?: string[];
 }
 
 export interface ConnectResult {
@@ -403,7 +401,10 @@ export async function connectFirefox(options: ConnectOptions = {}): Promise<Conn
   }
 
   if (options.autoLaunch) {
-    const launch = await launchFirefoxWithDebugging(targetPort, options.headless, options.profilePath, options.firefoxArgs);
+    const { loadConfig } = await import("./config.js");
+    const cfg = loadConfig();
+    const configArgs = cfg.firefox.firefoxArgs?.length ? cfg.firefox.firefoxArgs : undefined;
+    const launch = await launchFirefoxWithDebugging(targetPort, options.headless, options.profilePath, configArgs);
     if (launch.success) {
       return {
         success: true,

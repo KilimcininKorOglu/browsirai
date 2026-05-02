@@ -48,7 +48,6 @@ let bidiConnection: BiDiConnection | null = null;
 
 let headlessMode = process.env.FOXBROWSER_HEADLESS === "1" || process.env.FOXBROWSER_HEADLESS === "true";
 let connectProfilePath: string | undefined;
-let connectFirefoxArgs: string[] | undefined;
 let connectAcceptInsecureCerts = false;
 
 function attachLifecycleListeners(conn: BiDiConnection): void {
@@ -96,7 +95,6 @@ async function getBiDi(): Promise<BiDiConnection> {
   const connection = await connectFirefox({
     autoLaunch: true,
     profilePath: connectProfilePath,
-    firefoxArgs: connectFirefoxArgs,
   });
 
   if (!connection.success) {
@@ -611,7 +609,6 @@ const toolShapes: Record<string, Record<string, z.ZodType>> = {
     host: z.string().optional(),
     headless: cBool.optional(),
     profilePath: z.string().optional(),
-    firefoxArgs: z.array(z.string()).optional(),
     acceptInsecureCerts: cBool.optional(),
   },
   browser_tabs: { filter: z.string().optional() },
@@ -806,13 +803,11 @@ function createHandlers(): Record<string, ToolHandler> {
         const typed = args as {
           headless?: boolean;
           profilePath?: string;
-          firefoxArgs?: string[];
           acceptInsecureCerts?: boolean;
         };
         const wasHeadless = headlessMode;
         headlessMode = typed.headless === true;
         connectProfilePath = typed.profilePath;
-        connectFirefoxArgs = typed.firefoxArgs;
         connectAcceptInsecureCerts = typed.acceptInsecureCerts === true;
         if (wasHeadless !== headlessMode && bidiConnection?.isConnected) {
           bidiConnection.close();
