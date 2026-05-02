@@ -200,7 +200,7 @@ export class BiDiConnection {
    * Open the WebSocket connection.
    * Resolves on the `open` event; rejects on `error`.
    */
-  async connect(): Promise<void> {
+  async connect(capabilities?: Record<string, unknown>): Promise<void> {
     this.closed = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let WS = (globalThis as any).WebSocket;
@@ -241,9 +241,8 @@ export class BiDiConnection {
 
     // Firefox BiDi requires an explicit session before any commands work.
     try {
-      await this.send("session.new", { capabilities: {} });
+      await this.send("session.new", { capabilities: capabilities ?? {} });
     } catch {
-      // session.new failed — verify the connection is still usable
       try {
         await this.send("session.status", {});
       } catch {

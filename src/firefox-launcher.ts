@@ -25,6 +25,10 @@ export interface ConnectOptions {
   autoLaunch?: boolean;
   /** If true, launch Firefox in headless mode */
   headless?: boolean;
+  /** Path to an existing Firefox profile directory */
+  profilePath?: string;
+  /** Extra command-line arguments to pass to Firefox */
+  firefoxArgs?: string[];
 }
 
 export interface ConnectResult {
@@ -248,7 +252,12 @@ const SEPARATE_PORT = 9444;
  * NEVER quits the user's running Firefox. If Firefox is already running
  * without debugging, a separate instance is launched with a temp profile.
  */
-export async function launchFirefoxWithDebugging(port = 9222, headless = false): Promise<LaunchResult> {
+export async function launchFirefoxWithDebugging(
+  port = 9222,
+  headless = false,
+  profilePath?: string,
+  extraArgs?: string[],
+): Promise<LaunchResult> {
   const healthy = await isBiDiHealthy(port);
   if (healthy) {
     const ws = await getWsEndpoint(port);
@@ -269,11 +278,10 @@ export async function launchFirefoxWithDebugging(port = 9222, headless = false):
   const usesSeparateInstance = isFirefoxRunning();
   const targetPort = usesSeparateInstance ? SEPARATE_PORT : port;
 
-  const profileDir = usesSeparateInstance
-    ? join(tmpdir(), "foxbrowser-firefox")
-    : undefined;
+  const profileDir = profilePath
+    ?? (usesSeparateInstance ? join(tmpdir(), "foxbrowser-firefox") : undefined);
 
-  if (profileDir) {
+  if (profileDir && !profilePath) {
     mkdirSync(profileDir, { recursive: true });
   }
 
@@ -287,6 +295,10 @@ export async function launchFirefoxWithDebugging(port = 9222, headless = false):
 
   if (headless) {
     args.push("--headless");
+  }
+
+  if (extraArgs) {
+    args.push(...extraArgs);
   }
 
   const child = spawn(firefoxPath, args, {
@@ -385,7 +397,7 @@ export async function connectFirefox(options: ConnectOptions = {}): Promise<Conn
   }
 
   if (options.autoLaunch) {
-    const launch = await launchFirefoxWithDebugging(targetPort, options.headless);
+    const launch = await launchFirefoxWithDebugging(targetPort, options.headless, options.profilePath, options.firefoxArgs);
     if (launch.success) {
       return {
         success: true,

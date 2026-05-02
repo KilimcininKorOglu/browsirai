@@ -47,6 +47,9 @@ import { browserSaveState, browserLoadState } from "./browser-session-state.js";
 let bidiConnection: BiDiConnection | null = null;
 
 let headlessMode = process.env.FOXBROWSER_HEADLESS === "1" || process.env.FOXBROWSER_HEADLESS === "true";
+let connectProfilePath: string | undefined;
+let connectFirefoxArgs: string[] | undefined;
+let connectAcceptInsecureCerts = false;
 
 function attachLifecycleListeners(conn: BiDiConnection): void {
   const resetState = () => {
@@ -90,7 +93,11 @@ async function getBiDi(): Promise<BiDiConnection> {
     return bidiConnection;
   }
 
-  const connection = await connectFirefox({ autoLaunch: true });
+  const connection = await connectFirefox({
+    autoLaunch: true,
+    profilePath: connectProfilePath,
+    firefoxArgs: connectFirefoxArgs,
+  });
 
   if (!connection.success) {
     throw new Error(
@@ -101,7 +108,11 @@ async function getBiDi(): Promise<BiDiConnection> {
   const wsUrl = connection.wsEndpoint ?? `ws://127.0.0.1:${connection.port}/session`;
 
   bidiConnection = new BiDiConnection(wsUrl);
-  await bidiConnection.connect();
+  const caps: Record<string, unknown> = {};
+  if (connectAcceptInsecureCerts) {
+    caps.acceptInsecureCerts = true;
+  }
+  await bidiConnection.connect(Object.keys(caps).length > 0 ? caps : undefined);
   attachLifecycleListeners(bidiConnection);
 
   // Subscribe to BiDi events for console + network capture
@@ -593,7 +604,14 @@ const cBool = z.preprocess(
 );
 
 const toolShapes: Record<string, Record<string, z.ZodType>> = {
-  browser_connect: { port: cNum.optional(), host: z.string().optional(), headless: cBool.optional() },
+  browser_connect: {
+    port: cNum.optional(),
+    host: z.string().optional(),
+    headless: cBool.optional(),
+    profilePath: z.string().optional(),
+    firefoxArgs: z.array(z.string()).optional(),
+    acceptInsecureCerts: cBool.optional(),
+  },
   browser_tabs: { filter: z.string().optional() },
   browser_snapshot: {
     selector: z.string().optional(),
@@ -768,9 +786,17 @@ function createHandlers(): Record<string, ToolHandler> {
 
     browser_connect: async (args) => {
       try {
-        const typed = args as { headless?: boolean };
+        const typed = args as {
+          headless?: boolean;
+          profilePath?: string;
+          firefoxArgs?: string[];
+          acceptInsecureCerts?: boolean;
+        };
         const wasHeadless = headlessMode;
         headlessMode = typed.headless === true;
+        connectProfilePath = typed.profilePath;
+        connectFirefoxArgs = typed.firefoxArgs;
+        connectAcceptInsecureCerts = typed.acceptInsecureCerts === true;
         if (wasHeadless !== headlessMode && bidiConnection?.isConnected) {
           bidiConnection.close();
           bidiConnection = null;

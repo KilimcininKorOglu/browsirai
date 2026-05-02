@@ -26,6 +26,10 @@ const firefoxConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(9222),
   host: z.string().min(1).default("127.0.0.1"),
   autoLaunch: z.boolean().default(false),
+  profilePath: z.string().optional(),
+  firefoxArgs: z.array(z.string()).default([]),
+  prefs: z.record(z.union([z.string(), z.number(), z.boolean()])).default({}),
+  acceptInsecureCerts: z.boolean().default(false),
 });
 
 const screenshotConfigSchema = z.object({
@@ -58,6 +62,10 @@ const partialFirefoxSchema = z.object({
   port: z.number().int().min(1).max(65535).optional(),
   host: z.string().min(1).optional(),
   autoLaunch: z.boolean().optional(),
+  profilePath: z.string().optional(),
+  firefoxArgs: z.array(z.string()).optional(),
+  prefs: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  acceptInsecureCerts: z.boolean().optional(),
 }).optional();
 
 const partialScreenshotSchema = z.object({
@@ -185,6 +193,18 @@ function applyEnvOverrides(config: BrowserdConfig): BrowserdConfig {
   const host = process.env.FOXBROWSER_HOST;
   if (host !== undefined && host !== "") {
     result.firefox.host = host;
+  }
+
+  // FOXBROWSER_PROFILE -> firefox.profilePath
+  const profile = process.env.FOXBROWSER_PROFILE;
+  if (profile !== undefined && profile !== "") {
+    result.firefox.profilePath = profile;
+  }
+
+  // ACCEPT_INSECURE_CERTS -> firefox.acceptInsecureCerts
+  const insecure = process.env.ACCEPT_INSECURE_CERTS;
+  if (insecure === "true" || insecure === "1") {
+    result.firefox.acceptInsecureCerts = true;
   }
 
   return result;
